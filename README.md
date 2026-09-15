@@ -1,6 +1,13 @@
-# BullBull Unpacker
+<div align="center">
+  <img src="assets/icon.png" alt="BullBull Unpacker" width="128">
 
-BullBull Unpacker / 牛牛解压器是一个 Windows 上的嵌套压缩包解压工具
+  # BullBull Unpacker
+
+  BullBull Unpacker / 牛牛解压器是一个 Windows 上的嵌套压缩包解压工具
+
+  [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](https://github.com/)
+  [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
+</div>
 
 ## 功能特点
 
@@ -13,8 +20,11 @@ BullBull Unpacker / 牛牛解压器是一个 Windows 上的嵌套压缩包解压
 
  ## 截图
 
-![主界面](docs/images/main.png)
-![运行中](docs/images/running.png)
+<div align="center">
+  <img src="shots/01-extracting.png" width="38%" alt="主界面">
+  <img src="shots/02-password-vault.png" width="38%" alt="密码本">
+  <img src="shots/03-context-menu.png" width="20%" alt="右键菜单">
+</div>
 
  ## 密码记忆
 
@@ -41,10 +51,11 @@ BullBull Unpacker / 牛牛解压器是一个 Windows 上的嵌套压缩包解压
 - **PySide6 / Qt6** — 界面框架，遵循 GNU LGPLv3 许可证
 - **WinRAR** — 用于解压加密的 RAR5 文件，需用户自行安装并确保已获得合法授权，本项目不包含、分发和修改其任何组件
 
-详见 [`THIRD-PARTY.md`](THIRD-PARTY.md)
+详见 [`THIRD-PARTY.md`](docs/THIRD-PARTY.md)
 
 ## AI生成内容说明
-本项目的绝大部分设计、代码、文档和测试用例均由 DeepSeek 生成
+本项目的绝大部分设计、代码、文档和测试用例均由 DeepSeek 生成  
+软件图标由 OpenAI GPT-Image 生成
 
 ## 许可证
 
