@@ -4,13 +4,18 @@ BullBull Unpacker / 牛牛解压器是一个 Windows 上的嵌套压缩包解压
 
 ## 功能特点
 
-- 支持 zip / 7z / rar / tar / lz4 / lz5 / zstd 等格式
+- 支持 zip / 7z / rar / tar / lz4 / lz5 等格式
 - 自动识别伪装成 mp4 等格式的压缩包并解压
 - 嵌套解压，自动清理中间文件，收平空壳目录
 - 自动记忆解压密码，同时支持手动添加修改
 - 右键菜单集成，在资源管理器里一键加入解压列表
-- 解压即用
- 
+- 便携免安装，解压到任意位置即可使用
+
+ ## 截图
+
+![主界面](docs/images/main.png)
+![运行中](docs/images/running.png)
+
  ## 密码记忆
 
 密码来源按固定顺序尝试，命中即止：
@@ -23,24 +28,24 @@ BullBull Unpacker / 牛牛解压器是一个 Windows 上的嵌套压缩包解压
 对于未加密的压缩包，会预先判定并跳过整个密码库，避免产生虚假命中记录。
 密码本为纯文本文件，格式为 `密码<TAB>成功次数`，一行一条，可直接编辑。
 
+## 隐私说明
+
+- 本程序全程本地运行，不包含任何网络通信组件，不会上传和收集任何信息
+- 密码本为**明文存储**，未进行任何加密，请用户谨慎保管
+
 ## 第三方
 
 本项目使用或引用了以下第三方组件，在此致谢：
 
-- **7-Zip ZS** — 内置解压引擎，遵循 GNU LGPL 许可证，含 unRAR 限制。完整许可与文件清单见 `tools/7z/License.txt`
-- **PySide6 / Qt6** — 界面框架，遵循 LGPLv3 许可证
-- **WinRAR** — 用于解压加密的 RAR5 文件，需用户自行安装，本项目不包含
+- **7-Zip ZS** — 内置解压引擎，遵循 GNU LGPL 许可证，完整许可与文件清单见 `tools/7z/License.txt`
+- **PySide6 / Qt6** — 界面框架，遵循 GNU LGPLv3 许可证
+- **WinRAR** — 用于解压加密的 RAR5 文件，需用户自行安装并确保已获得合法授权，本项目不包含、分发和修改其任何组件
 
 详见 [`THIRD-PARTY.md`](THIRD-PARTY.md)
 
-## 截图
-
-![主界面](docs/images/main.png)
-![运行中](docs/images/running.png)
-
 ## AI生成内容说明
-本项目的大部分设计、代码、文档和测试用例均由 DeepSeek 生成
+本项目的绝大部分设计、代码、文档和测试用例均由 DeepSeek 生成
 
 ## 许可证
 
-本项目采用 [GPLv3](https://choosealicense.com/licenses/gpl-3.0/) 许可证
+本项目采用 [GNU GPLv3](https://choosealicense.com/licenses/gpl-3.0/) 许可证
