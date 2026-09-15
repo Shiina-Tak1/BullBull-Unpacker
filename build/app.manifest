@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Windows 应用清单：PyInstaller 打包时用（见 build/build_portable.ps1）。
+
+  三条声明各自的理由：
+    * longPathAware   ：解压产物路径很容易超过 260 字符（套娃 + 长中文名），
+                        不开这个开关长路径会直接失败；开了之后 Py3.6+ / Win10 1607+ 才真的用得上。
+    * dpiAware / PerMonitorV2：Qt 自己也会设，但在清单里声明一次更稳（启动早期就生效）。
+    * asInvoker      ：全程不需要管理员 —— 右键菜单只写 HKCU、便携版数据写在程序旁边。
+
+  注意：XML 注释里不能出现两个连续的减号（会解析失败），所以这里不写命令行参数原文。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity
+      type="win32"
+      name="BullBull.Unpacker"
+      version="1.0.0.0"
+      processorArchitecture="*"/>
+  <description>BullBull Unpacker</description>
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>
