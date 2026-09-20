@@ -17,17 +17,7 @@ __pycache__/
 
 # ---- 虚拟环境 / 工具缓存 ----
 .venv/
-.idea/
-.vscode/
 .tmp/
-
-# ---- 测试产物与素材 ----
-tests/fixtures/
-tests/work/
-tests/ui-base/
-tests/ui-out/
-tests/demo/
-tests/ui-demo/
 
 # ---- 构建产物 ----
 release/
