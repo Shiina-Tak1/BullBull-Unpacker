@@ -1,0 +1,33 @@
+# ---- 运行时/用户数据 ----
+密码本.txt
+config.json
+logs/
+*.log
+
+# ---- 构建产物 ----
+# build/frozen 是冻结中转目录，进构建产物区
+build/frozen/
+build/pyi/
+build/version.txt
+build/*.toc
+*.spec
+*.pyc
+__pycache__/
+*.pyo
+
+# ---- 虚拟环境 / 工具缓存 ----
+.venv/
+.idea/
+.vscode/
+.tmp/
+
+# ---- 测试产物与素材 ----
+tests/fixtures/
+tests/work/
+tests/ui-base/
+tests/ui-out/
+tests/demo/
+tests/ui-demo/
+
+# ---- 构建产物 ----
+release/

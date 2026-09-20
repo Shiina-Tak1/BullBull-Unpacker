@@ -40,8 +40,10 @@ TOOLS = ["smoke_core.py", "smoke_pipeline.py", "smoke_ui.py", "verify_shellmenu.
 #   docs\         LICENSE / REQUIREMENTS.txt / THIRD-PARTY.md（文档都收在这儿）
 #   assets\       bbu.ico + icon.png（图标源图也放 assets 里）
 #   shots\        README 引用的截图
-REPO_DOCS = [("LICENSE", "docs/LICENSE"),
-             ("requirements.txt", "docs/REQUIREMENTS.txt"),   # 从 src\ 取，改名大写
+REPO_DOCS = [("LICENSE", "LICENSE"),                        # 仓库根（GitHub 认这个来显示许可证）
+             ("LICENSE", "docs/LICENSE"),                   # docs\ 里也留一份（作者定的）
+             ("README.md", "README.md"),                    # 仓库根：作者在 GitHub 上定稿的那版
+             ("requirements.txt", "docs/REQUIREMENTS.txt"),  # 从 src\ 取，改名大写
              ("THIRD-PARTY.md", "docs/THIRD-PARTY.md")]
 ICON_SRC = "icon.png"
 ICON_DST = "assets/icon.png"
