@@ -44,6 +44,7 @@ BAD_FILE_PATTERNS = [
     (re.compile(r"\.(mp4|mkv|zip|rar|7z|lz4|iso|apk)$", re.I), "素材/压缩包"),
     (re.compile(r"\.(exe|dll)$", re.I), "二进制（走 Release）"),
 ]
+KEEP_BINARIES = ("tools/7z/",)
 BAD_CONTENT = [
     (re.compile(r"C:\\Users\\[^\\\s\"'<>]+", re.I), "本机用户目录"),
     (re.compile(r"[A-Z]:\\(?:下载|通用工作区|资料|游戏)"), "作者私人盘符路径"),
@@ -111,14 +112,15 @@ def main() -> int:
             if ignored(rel_p, name, ignores):
                 continue                     # .gitignore 里的东西不会被提交，跳过
             size = os.path.getsize(path)
-            if size > 5 * 1024 * 1024:
+            if size > 5 * 1024 * 1024 and not rel_p.lower().startswith(KEEP_BINARIES):
                 big.append((size / 1024 / 1024, rel))
             if name in BAD_FILES:
                 problems.append(f"不该提交的文件：{rel}（{BAD_FILES[name]}）")
                 continue
             for rx, why in BAD_FILE_PATTERNS:
                 if rx.search(name):
-                    problems.append(f"不该提交的文件：{rel}（{why}）")
+                    if not rel_p.lower().startswith(KEEP_BINARIES):
+                        problems.append(f"不该提交的文件：{rel}（{why}）")
                     break
             if os.path.splitext(name)[1].lower() not in TEXT_EXT or name == me:
                 continue
