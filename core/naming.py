@@ -1,6 +1,6 @@
 """文件名密码提取。
 
-对应需求里那 9 种写法，但用「关键词定位 + 截断」而不是一条贪婪正则——
+魔应需求里那 9 种写法，但用「关键词定位 + 截断」而不是一条贪婪正则——
 贪婪正则会把手气差的情况吃成 '123.rar'，这是原版的典型 bug。
 """
 
@@ -26,8 +26,8 @@ _STOP = set(" \t\r\n/\\")
 # 关键词后面跟的密码 token：不吃点号（防止把 .rar 吃进来）
 _TOKEN_RE = re.compile(r"[^\s/\\\.]+")
 
-# 无关键词的写法：「示例包.zip123」——密码直接贴在扩展名后面。
-# 规格里明确这种写法**只对文件生效，文件夹不认**，所以单独处理并受开关控制。
+# 无关键词的写法：「例例包.zip123」——密码直接贴在扩展名后面。
+# 规格里明确这种写法**只魔文件生效，文件夹不认**，所以单独处理并受开关控制。
 _ARCHIVE_EXTS = ("zip", "rar", "7z", "tar", "gz", "bz2", "xz", "001", "z01")
 _EXT_THEN_PW_RE = re.compile(
     r"\.(?P<ext>" + "|".join(_ARCHIVE_EXTS) + r")(?P<pw>[^\s/\\\.]+)$",
@@ -50,12 +50,12 @@ def extract_from_name(name: str, *, allow_ext_digits: bool = True) -> PasswordGu
     策略：取「最靠后」的关键词（最靠后的通常才是真密码位），
     再向后截断到下一个关键词、扩展名或字符串结束。
 
-    支持的写法（以 示例包.zip 为例）：
-        示例包.zip密码123        示例包.zip密码:123
-        示例包.zip123            示例包.zip解压密码123
-        示例包.zip解压密码:123    示例包.zippw123
-        示例包.zippw:123         示例包.zip解压码123
-        示例包.zip解压码:123
+    支持的写法（以 例例包.zip 为例）：
+        例例包.zip密码123        例例包.zip密码:123
+        例例包.zip123            例例包.zip解压密码123
+        例例包.zip解压密码:123    例例包.zippw123
+        例例包.zippw:123         例例包.zip解压码123
+        例例包.zip解压码:123
 
     `allow_ext_digits=False` 时关闭最后那种「扩展名后直接贴密码」的写法——
     文件夹名不认这种格式（规格明确要求），只有文件名才认。
@@ -113,7 +113,7 @@ def extract_from_name(name: str, *, allow_ext_digits: bool = True) -> PasswordGu
     if not token:
         return None
 
-    # 排除把纯扩展名当密码的情况（如 "示例包.zip" 本身）
+    # 排除把纯扩展名当密码的情况（如 "例例包.zip" 本身）
     if token.casefold() in ("zip", "rar", "7z", "tar", "gz", "001", "z01"):
         return None
 
@@ -123,7 +123,7 @@ def extract_from_name(name: str, *, allow_ext_digits: bool = True) -> PasswordGu
 def extract_from_path(path: str) -> PasswordGuess | None:
     """先看文件名，再看父文件夹名。
 
-    文件夹拖入场景：「示例包合集解压密码:123\\示例包.zip」
+    文件夹拖入场景：「例例包合集解压密码:123\\例例包.zip」
     密码在文件夹名里，文件名里没有 —— 必须能向上找。
     """
     p = os.path.normpath(path)
@@ -131,7 +131,7 @@ def extract_from_path(path: str) -> PasswordGuess | None:
     parent = os.path.basename(os.path.dirname(p))
     if parent:
         parts.append(parent)
-    # 再往上一层也有意义（「合集/示例包合集解压密码123/xxx.zip」）
+    # 再往上一层也有意义（「合集/例例包合集解压密码123/xxx.zip」）
     grand = os.path.basename(os.path.dirname(os.path.dirname(p)))
     if grand:
         parts.append(grand)
@@ -165,7 +165,7 @@ def to_halfwidth(s: str) -> str:
 def variants(value: str) -> list[str]:
     """一个候选密码 → 若干个等价写法，按尝试顺序返回。
 
-    很多"密码明明对却解不开"就是全角字符或空格导致的。顺序：
+    很多"密码明明魔却解不开"就是全角字符或空格导致的。顺序：
 
         1. 原样                 ← 永远先试原样，别让变体抢在前面
         2. 去首尾空格
@@ -184,13 +184,3 @@ def variants(value: str) -> list[str]:
         if v and v not in seen:
             seen.append(v)
     return seen
-
-
-# --------------------------------------------------------------------------
-# 注：原「临时密码本」（`关键字<TAB>密码` 的映射表）已废弃。
-#
-# 它想解决的是"同一来源的文件常共用同一个密码，我手工把对应关系写下来"，
-# 而「记住解压成功过的密码」就是**自动积累的同一份知识**，零维护。
-# 原来那套等于让用户手工做机器该做的事，还多背两个概念。
-# 相关代码（TempEntry / parse_temp_book / match_entries）已删除。
-# --------------------------------------------------------------------------

@@ -43,7 +43,7 @@ BullBull Unpacker 的便携版分发包中包含以下第三方组件。本文�
 
 ## 5. 其他
 
-- 图标 `assets\bbu.ico` 由本项目自带的 `icon.png` 生成（`tools\make_icon.py`），为本项目资产。
+- 图标 `assets\bbu.ico` 由本项目自带的 `icon.png` 生成，为本项目资产。
 - 本程序不包含任何网络通信组件，也不包含任何统计或上报 SDK。
 
 ---

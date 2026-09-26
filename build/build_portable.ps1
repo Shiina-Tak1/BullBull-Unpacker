@@ -1,14 +1,25 @@
 ﻿# BullBull Unpacker —— 便携版打包脚本（一把跑完）
 #
-# 用法：
-#     pwsh -File build\build_portable.ps1                 # 完整流程
-#     pwsh -File build\build_portable.ps1 -SkipFreeze     # 跳过 PyInstaller（只重组目录/扫描/打包）
+# 用法（**用 Windows 自带的 PowerShell 5.1 就行**；手册与 skill 里统一写这个形式）：
+#     powershell -NoProfile -ExecutionPolicy Bypass -File build\build_portable.ps1
+#     powershell -NoProfile -ExecutionPolicy Bypass -File build\build_portable.ps1 -SkipFreeze
 #
-# 做四件事：
+# ⚠ **本文件必须存成 UTF-8 带 BOM**。PowerShell 5.1 只靠 BOM 判定 UTF-8，没有 BOM 就按
+#   GBK 读 —— 这里满是中文注释，会直接报一串 ParserError、整个脚本起不来。
+#   （2026-09-20 的 `a6d013a` 丢过一次 BOM，2026-09-23 找回；改这份文件时别用会去掉 BOM 的工具。）
+#
+# 做五件事：
 #   1) 生成版本资源 + PyInstaller 冻结（onedir、无控制台、带 manifest）
 #   2) 组装便携目录：**只拷白名单里的东西**（绝不带源码/配置/密码本/日志/测试/素材）
-#   3) 隐私扫描：机器路径、用户名、素材名、旧名字（命中就报错停下）
-#   4) 打 zip + 写 SHA256
+#   3) 瘦身（删掉用不到的 Qt 组件）
+#   4) 包内自查：本机绝对路径 / 用户名 / 用户目录 + 内置 7-Zip 的 SHA256（不符就报错停下）
+#      ⚠ **素材名与项目旧名字不在这里查**（2026-09-24 更正注释：以前这里写着查，实现里没有）：
+#        脱敏词表是 `src\tools\private_terms.txt` + 真密码本，而 `tools\` 不进便携包、这份脚本
+#        也可能在公开仓克隆里跑（克隆里根本没有词表）。那一步由 `tools\sync_repo.py` +
+#        `tools\check_repo_clean.py` 在 **github 副本那一侧**做（§16.2）。
+#       包内能查的是"本机信息"（用户名 / 用户目录 `%USERPROFILE%` / 本机绝对路径），
+#       这三条一直在实现里（$patterns 那三条）。
+#   5) 验收（verify_portable）+ 打 zip + 写 SHA256
 #
 # 为什么强调"白名单"：打包最怕的就是顺手把 config.json（里面有用户机器路径）、
 # 密码本.txt（用户的密码！）、logs（启动参数里就是文件名）一起发出去。
@@ -23,27 +34,71 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $PSScriptRoot         # <big>\src
-$Big  = Split-Path -Parent $Root                 # <big>（doc/ 与 github/ 都在这一层）
-Set-Location $Root
+# 子进程（python）的中文输出别乱码：PS 5.1 默认按 ANSI 解码子进程的 stdout，而 Python 写的是
+# UTF-8 —— 不改也不影响产物，只是 `sync_repo.py --sanitize-dir` 那一行会显示成一堆乱码。
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$env:PYTHONIOENCODING = "utf-8"
 
-$AppName  = "BullBull Unpacker"
-$Version  = (& "$Root\.venv\Scripts\python.exe" -c "import sys; sys.path.insert(0,'.'); from core.appinfo import VERSION; print(VERSION)").Trim()
-if (-not $Version) { throw "读不到版本号（core/appinfo.py）" }
-# 产物统一放 <big>\github\release（那儿不进 git；发布时把 zip 传到 GitHub Releases）
-$ReleaseDir = Join-Path $Big "github\release"
+# ---- 两种布局，同一个脚本（2026-09-23 起公开仓克隆里也能跑）-------------------------
+# 开发仓：脚本在 <大>\src\build\ → `<大>\doc\` 与 `<大>\github\` 是同级目录；
+#         文档取自 doc\dist\README.txt + doc\THIRD-PARTY.md，产物落 github\release\。
+# 公开仓：脚本在 <repo>\build\  → 仓库根就有 docs\（没有 doc\）；
+#         文档取自 docs\README.txt + docs\THIRD-PARTY.md，产物落 <repo>\release\
+#         （`.gitignore` 里已经忽略 release\）。
+# 判据：**开发仓里 `<大>\doc\` 一定在**；公开仓克隆只有 `docs\`。
+$Root = Split-Path -Parent $PSScriptRoot
+$Parent = Split-Path -Parent $Root
+$IsDevTree = Test-Path -LiteralPath (Join-Path $Parent "doc")
+if ($IsDevTree) {
+    $Big        = $Parent
+    $ReleaseDir = Join-Path $Big "github\release"
+    $DocReadme  = Join-Path $Big "doc\dist\README.txt"
+    $DocThird   = Join-Path $Big "doc\THIRD-PARTY.md"
+} else {
+    $Big        = $Root
+    $ReleaseDir = Join-Path $Root "release"
+    $DocReadme  = Join-Path $Root "docs\README.txt"
+    $DocThird   = Join-Path $Root "docs\THIRD-PARTY.md"
+}
+Set-Location $Root
+# 产物目录先建出来：**全新公开仓克隆里 `<repo>\release\` 并不存在**，而下面第 1 步是
+# `Move-Item … -Destination $OutDir` —— 父目录不在就报 "Could not find a part of the path"
+# （2026-09-23 端到端实测踩到：开发仓里没暴露，只因为 `github\release\` 早就被 sync_repo 建过）。
+New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
+
+$AppName = "BullBull Unpacker"
+# 解释器：开发仓用 `.venv`；公开仓克隆里没有 venv，就用 PATH 上那个
+# （依赖见 docs\REQUIREMENTS-BUILD.txt —— 它 `-r` 了 docs\REQUIREMENTS.txt，打包要两份一起装）
+$python = Join-Path $Root ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $python)) { $python = "python" }
+$Version = ""
+try {
+    $Version = (& $python -c "import sys; sys.path.insert(0,'.'); from core.appinfo import VERSION; print(VERSION)" 2>$null).Trim()
+} catch {
+    $Version = ""
+}
+if (-not $Version) {
+    Write-Host "读不到版本号 —— 先看看解释器装好没有：" -ForegroundColor Red
+    Write-Host "  用的是：$python"
+    Write-Host "  开发仓：确认 <大>\src\.venv 在。"
+    Write-Host "  公开仓克隆：先建环境再装依赖（打包依赖在 docs\REQUIREMENTS-BUILD.txt，它会带上 PySide6）："
+    Write-Host "      python -m venv .venv"
+    Write-Host "      .venv\Scripts\python -m pip install -r docs\REQUIREMENTS-BUILD.txt"
+    throw "读不到版本号（core/appinfo.py）"
+}
 if (-not $OutDir)   { $OutDir = Join-Path $ReleaseDir $AppName }
 if (-not $ZipName)  { $ZipName = "BullBullUnpacker-$Version-portable.zip" }
 $ZipPath = Join-Path $ReleaseDir $ZipName
 
 Write-Host "== BullBull Unpacker $Version 便携版打包 ==" -ForegroundColor Cyan
+Write-Host "   布局    : $(if ($IsDevTree) { '开发仓' } else { '公开仓克隆' })（$Root）"
 Write-Host "   输出目录: $OutDir"
 Write-Host "   压缩包  : $ZipPath"
 
 # ---------------------------------------------------------------- 1) 冻结
 if (-not $SkipFreeze) {
     Write-Host "`n[1/5] 生成版本资源 + PyInstaller 冻结…" -ForegroundColor Cyan
-    & "$Root\.venv\Scripts\python.exe" "$Root\build\make_version_file.py"
+    & $python "$Root\build\make_version_file.py"
     if ($LASTEXITCODE -ne 0) { throw "生成版本资源失败" }
 
     # 每次从干净的 dist 开始，避免上一版的残留被当成新产物
@@ -58,7 +113,7 @@ if (-not $SkipFreeze) {
     #   venv 里那些 .exe 启动器（pip/pyinstaller…）**把解释器路径写死在里面**，
     #   整个项目文件夹一搬动，它们就会一声不吭地退出（退出码 1、没有任何输出）——
     #   实测就是这么踩的。走 `-m` 永远跟着当前解释器走。
-    & "$Root\.venv\Scripts\python.exe" -m PyInstaller `
+    & $python -m PyInstaller `
         --noconfirm --clean --windowed --onedir `
         --name $AppName `
         --icon "$Root\assets\bbu.ico" `
@@ -87,8 +142,15 @@ foreach ($rel in @("tools", "assets", "docs", "doc", "文档")) {
     Remove-Item -LiteralPath (Join-Path $OutDir $rel) -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# 文档目录叫 **docs**（作者定稿的布局）；里头放 doc\dist\ 里的那几份
-# （要英文版就把 doc\en\ 的三份覆盖过来，见那份说明）
+# 文档目录叫 **docs**（作者定稿的布局）；里头**只放两份**（2026-09-23 作者裁决）：
+#   README.txt       —— 作者手写的"快速上手"精简版。它的内容引用了界面文案，
+#                       界面文案变了要**人工核对**这份，脚本不会替你同步。
+#   THIRD-PARTY.md   —— 第三方许可。
+# 两份的来源按布局不同（见文件开头那段）：开发仓取 `doc\dist\README.txt` + `doc\THIRD-PARTY.md`，
+# 公开仓克隆取 `docs\README.txt` + `docs\THIRD-PARTY.md`。
+# **不进包**：使用手册.md（它是 README.txt 的来源，只给作者精简用）、CHANGELOG.md（开发记录）。
+# 两者也不进公开仓。见开发手册 §16.7 / §16.11。
+# （只做中文。英文译本已于 2026-09-21 归档到 backup\doc-en-2026-09-21\，不再维护）
 $docs = Join-Path $OutDir "docs"
 New-Item -ItemType Directory -Force -Path $docs | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $OutDir "tools\7z") | Out-Null
@@ -101,17 +163,26 @@ function Copy-FileSafe([string]$From, [string]$To) {
     Copy-Item -LiteralPath $From -Destination $To -Force
 }
 
-# tools/7z：_internal 里已经有一份（--add-data），明面上再放一份，
-# 这样"打开程序目录就能看到内置 7z"，也方便用户单独用
+# tools/7z：放在**程序目录旁边**，这样"打开程序目录就能看到内置 7z"，也方便用户单独用。
+# **不用 `--add-data`**：`core/paths.py::resource_dir()` 优先用旁边这份；加了它同一个 7-Zip
+# 会在 `_internal` 里再多一份（5.9MB ×2）—— 见开发手册 §16.8 末。
 foreach ($f in Get-ChildItem -LiteralPath "$Root\tools\7z" -File) {
     Copy-FileSafe $f.FullName (Join-Path $OutDir "tools\7z\$($f.Name)")
 }
 Copy-FileSafe "$Root\assets\bbu.ico" (Join-Path $OutDir "assets\bbu.ico")
 
-# 文档：中文四份，来源 <大>\doc\dist\（英文译本在 <大>\doc\en\，要换自己覆盖）
-$pkgDocs = Join-Path $Big "doc\dist"   # 要打进包里的文档全在这儿（放几份就打几份）
-foreach ($f in Get-ChildItem -LiteralPath $pkgDocs -File) {
-    Copy-FileSafe $f.FullName (Join-Path $docs $f.Name)
+# 文档：**点名两个**（这脚本的原则就是"一个个点名拷"，不搞"目录里有什么就发什么"）
+Copy-FileSafe $DocReadme (Join-Path $docs "README.txt")
+Copy-FileSafe $DocThird  (Join-Path $docs "THIRD-PARTY.md")
+# 这两份是**包里唯一的文本**（其余不是 exe 就是二进制），也是整个仓库里唯一会离开本机的
+# 文档 → 用同一套私有脱敏表洗一遍**包里的副本**（不动源文件）。
+# 开发机上 tools\ 齐全；公开仓克隆里没有这个脚本，跳过即可（那边也没有脱敏表要洗）。
+$sanitizer = Join-Path $Root "tools\sync_repo.py"
+if (Test-Path -LiteralPath $sanitizer) {
+    & $python $sanitizer --sanitize-dir $docs
+    if ($LASTEXITCODE -ne 0) { throw "便携包文档脱敏失败（退出码 $LASTEXITCODE）" }
+} else {
+    Write-Host "  找不到 tools\sync_repo.py（脱敏脚本是开发工具，不随仓库发布）——跳过文档脱敏" -ForegroundColor Yellow
 }
 
 # ---------------------------------------------------------------- 3) 瘦身
@@ -171,7 +242,7 @@ $removed | Group-Object { $_.File.Split('\')[1] } | Sort-Object { ($_.Group | Me
         Write-Host ("    {0,-28} {1,6:N1} MB" -f $_.Name, ($_.Group | Measure-Object MB -Sum).Sum)
     }
 
-# ---------------------------------------------------------------- 4) 隐私扫描
+# ------------------------------------------------- 4) 包内自查（本机信息 + 7z 校验）
 # 先清掉"用户数据"：便携版第一次运行会自己生成它们，**绝不能被我们打进包里**。
 # （踩过：手动跑过一次 exe，logs\run.log 留在目录里而程序还开着 → 文件被占用、
 #   Remove-Item 静默失败 → 那个日志真的被打进了 zip。所以删完必须**复查**。）
@@ -185,7 +256,7 @@ foreach ($rel in @("logs", "config.json", "密码本.txt")) {
     }
 }
 
-Write-Host "`n[4/5] 隐私扫描…" -ForegroundColor Cyan
+Write-Host "`n[4/5] 包内自查（本机信息 + 内置 7-Zip 校验）…" -ForegroundColor Cyan
 $bad = @()
 $files = Get-ChildItem -LiteralPath $OutDir -Recurse -File -Force
 # `_internal` 是 PyInstaller 自己的运行时（Python 标准库 + PySide6），里面本来就有
@@ -209,7 +280,17 @@ foreach ($f in $scanFiles) {
 # 注意：只查**本机信息**（用户名/用户目录/本机盘符路径）。
 # 别把"密码本"这种**程序自己的数据文件名**列进来——手册里正常会写"密码本.txt 在哪"，
 # 那样会把正当的文档判成问题（文件本身由上面的 forbiddenNames 兜住）。
-$textExt = @(".md", ".txt", ".json", ".ini", ".ps1", ".bat", ".vbs")
+# 文本后缀名单**只此一份**（`core\textscan.py`，B-2026-062）：以前这里 7 项、
+# `tools\check_repo_clean.py` 11 项、`tools\sync_repo.py` 8 项 —— 三个值，而三处
+# 做的是同一条隐私闸门（`.ini` / `.yml` / `.yaml` 于是各漏一段）。
+# 从 Python 那边取：`core\` 在开发仓与公开仓克隆里都在仓库根，是两边都读得到的地方。
+$textExtRaw = (& $python -c "import sys; sys.path.insert(0,'.'); from core.textscan import TEXT_EXT; print(' '.join(sorted(TEXT_EXT)))" 2>$null)
+if ($LASTEXITCODE -ne 0 -or -not $textExtRaw) {
+    # 名单读不到 = 这条扫描**不知道要扫什么**。不许降级成"少扫几个后缀"继续打包
+    # （那正是 B-2026-062 的形状：读不了就算过）。直接停。
+    throw "读不到文本后缀名单（core\textscan.py）—— 隐私扫描不能没有它"
+}
+$textExt = @($textExtRaw.Trim() -split '\s+' | Where-Object { $_ })
 $patterns = @(
     @{ p = "C:\Users\";    why = "本机绝对路径" }
 )
@@ -221,14 +302,49 @@ if ($userProfile) { $patterns += @{ p = $userProfile; why = "本机用户目录"
 
 $scanTargets = $scanFiles | Where-Object { $textExt -contains $_.Extension.ToLower() }
 foreach ($f in $scanTargets) {
-    $content = Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
-    if (-not $content) { continue }
+    # ★ 读不了**不许静默跳过**（B-2026-062 同一形状）：读不了 = 这一份没被扫描过，
+    #   而它照样在包里。以前是 `-ErrorAction SilentlyContinue` + `continue`，
+    #   等于"没查过"冒充"干净"。
+    try {
+        $content = Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8 -ErrorAction Stop
+    } catch {
+        $bad += "读不了（没有被扫描过）：$($f.FullName.Substring($OutDir.Length)) — $($_.Exception.Message)"
+        continue
+    }
+    if (-not $content) { continue }     # 空文件：本来就没有内容可扫
     foreach ($pat in $patterns) {
         if ($content -like "*$($pat.p)*") {
             $bad += "$($pat.why)「$($pat.p)」出现在 $($f.FullName.Substring($OutDir.Length))"
         }
     }
 }
+# 3c) ★ 内置 7-Zip 的校验值（`tools\7z\SHA256SUMS`，2026-09-24 加）：
+#   它是**跟仓的二进制依赖**（R-06），不是构建产物 —— 换过版本、拷坏、被别的程序改写，
+#   都必须当场看出来，而不是等用户端解压报错。所以**打包前逐条核对**。
+#   ⚠ 校验文件缺失 / 一条有效记录都没有 —— **都算失败**：不许静默跳过这一步
+#   （"没查"冒充"干净"是 B-2026-062 的形状，这个项目里已经踩过一次）。
+$sumFile = Join-Path $Root "tools\7z\SHA256SUMS"
+if (-not (Test-Path -LiteralPath $sumFile)) {
+    $bad += "内置 7-Zip 没有校验文件：$sumFile（这一步不许跳过）"
+} else {
+    $wantHash = @{}
+    foreach ($line in (Get-Content -LiteralPath $sumFile -Encoding UTF8)) {
+        $t = $line.Trim()
+        if (-not $t -or $t.StartsWith("#")) { continue }
+        $parts = $t -split '\s+', 2
+        if ($parts.Count -eq 2 -and $parts[1].Trim()) { $wantHash[$parts[1].Trim()] = $parts[0].Trim().ToLower() }
+    }
+    if (-not $wantHash.Count) { $bad += "7-Zip 校验文件里一条有效记录都没有：$sumFile" }
+    foreach ($name in @($wantHash.Keys)) {
+        $f = Join-Path $Root "tools\7z\$name"
+        if (-not (Test-Path -LiteralPath $f)) { $bad += "校验文件点名了 $name，但文件不在：$f"; continue }
+        $gotHash = (Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash.ToLower()
+        if ($gotHash -ne $wantHash[$name]) {
+            $bad += "内置 7-Zip 校验不通过：$name（期望 $($wantHash[$name])，实际 $gotHash）"
+        }
+    }
+}
+
 if ($bad.Count) {
     Write-Host "  命中以下问题，先处理再打包：" -ForegroundColor Red
     $bad | Select-Object -Unique | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
@@ -242,8 +358,15 @@ Write-Host "  文本文件 $($scanTargets.Count) 个，全部干净；不该带�
 # 验右键菜单注册与冷启动带路径 —— 任何一项红了就停在这儿，不产出包。
 if (-not $SkipVerify) {
     Write-Host "`n[5/5] 对着 exe 跑验收（瘦身后的回归）…" -ForegroundColor Cyan
-    & "$Root\.venv\Scripts\python.exe" "$Root\tools\verify_portable.py"
-    if ($LASTEXITCODE -ne 0) { throw "验收没过（退出码 $LASTEXITCODE）——不产出包，先看上面的 FAIL" }
+    # 验收脚本是**开发工具**（2026-09-20 起不随仓库发布），所以可能不在。
+    # 在开发机上它一定在；别人 clone 公开仓后跑这个脚本时，这里只提示、不中断打包。
+    $verifier = "$Root\tools\verify_portable.py"
+    if (-not (Test-Path -LiteralPath $verifier)) {
+        Write-Host "  找不到 tools\verify_portable.py（验收脚本不随仓库发布）——跳过第 5 步" -ForegroundColor Yellow
+    } else {
+        & $python $verifier
+        if ($LASTEXITCODE -ne 0) { throw "验收没过（退出码 $LASTEXITCODE）——不产出包，先看上面的 FAIL" }
+    }
 } else {
     Write-Host "`n[5/5] 跳过验收（-SkipVerify）" -ForegroundColor Yellow
 }
@@ -261,4 +384,8 @@ Write-Host "`n完成：" -ForegroundColor Green
 Write-Host "  目录 $OutDir  ($sizeDir MB)"
 Write-Host "  压缩 $ZipPath  ($sizeZip MB)"
 Write-Host "  SHA256 $hash"
-Write-Host "`n下一步（你自己做）：干净机上解压 zip → 双击 exe → 走一遍验收清单（docs\打包发布清单.md 第 5 节）"
+if ($IsDevTree) {
+    Write-Host "`n下一步（你自己做）：干净机上解压 zip → 双击 exe → 走一遍验收清单（doc\开发手册.md §16.10）"
+} else {
+    Write-Host "`n下一步（你自己做）：干净机上解压 zip → 双击 exe → 按 docs\README.txt 走一遍"
+}

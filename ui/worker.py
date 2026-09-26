@@ -148,7 +148,7 @@ class JobWorker(QThread):
         try:
             result = runner.run()
         except Exception as exc:                      # 兜底：别让线程带着异常静默死掉
-            self.sig_log.emit(f"✘ 内部错误：{exc!r}")
+            self.sig_log.emit(f"✘ 内部错误：{exc}")
             result = self.items
         finally:
             self.extractor.cancel = None

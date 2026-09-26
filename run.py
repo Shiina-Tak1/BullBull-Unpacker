@@ -7,7 +7,7 @@
 
     run.py --install-shellmenu      # 只装右键菜单，不开界面（装完就退）
     run.py --uninstall-shellmenu    # 只卸右键菜单
-    run.py --where                  # 打印"程序/资源/数据都在哪"，排错用
+    run.py --where                  # 打印"程序/资源/数据都在哪"+构建指纹，排错与 VM 测试用
 
 右键菜单（core/shellmenu.py）写的就是第二条命令：只把路径加进待处理列表，
 不自动开始——解压到哪、重名怎么办这些都在界面上，先看一眼再点「开始」。
@@ -58,6 +58,16 @@ def _say(text: str = "") -> None:
         pass
 
 
+def _read_build_id() -> str:
+    r"""读构建指纹 —— 实现已经提到 `core\paths.py::build_id()`（2026-09-24，`TASK-060`）。
+
+    界面日志头（`ui\app.py`）也要写同一份指纹，而 `ui` 不该反向 import `run.py`
+    （打包入口不是模块）。所以唯一实现放 `core\paths.py`，这里只留一个薄壳 ——
+    `smoke_pipeline --only run_identity` 直接调的是这个名字，别删。
+    """
+    return paths.build_id()
+
+
 def handle_headless(argv: list[str]) -> "int | None":
     """处理"不需要开界面"的开关；不是这些开关就返回 None 继续正常流程。"""
     if "--install-shellmenu" in argv:
@@ -89,6 +99,9 @@ def handle_headless(argv: list[str]) -> "int | None":
         _say(f"  密码本   : {paths.data_path('密码本.txt')}")
         _say(f"  日志     : {paths.log_path()}")
         _say(f"  7-Zip    : {'有' if os.path.isfile(seven) else '缺'} {seven}")
+        build = _read_build_id()
+        if build:
+            _say(f"  构建指纹 : {build}（这一轮测的是哪份代码 —— 抄进报告头，见开发手册 §9.10）")
         return 0
     return None
 

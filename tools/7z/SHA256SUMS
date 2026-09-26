@@ -1,0 +1,17 @@
+# BullBull Unpacker 内置 7-Zip ZS（7-Zip 26.02 / ZS v1.5.7）的 SHA256
+#
+# 格式与 GNU coreutils 的 `sha256sum` 一致：`<sha256>  <文件名>`。
+# 核对：`sha256sum -c SHA256SUMS`，或 `certutil -hashfile 7z.exe SHA256`（Windows 自带）。
+#
+# 谁在读它：`build\build_portable.ps1` 打包前会逐条核对（不符就停下）。
+# `tools\7z\` 是跟仓库一起走的二进制依赖、不是构建产物，所以"换过版本 / 拷坏 / 被改写"
+# 必须当场看得出来，而不是等解压报错。
+#
+# 来源说明（2026-09-24，如实写）：这些值是在本机打包机上对仓库里这几份文件算出来的，
+# 尚未与上游发行版（mcmilk/7-Zip-zstd 26.02 v1.5.7 的发布资产）逐字节比对 ——
+# 那一步需要下载上游归档，本次没做。所以本文件现在保证的是"与上次随包的那份一致"
+# （防意外替换或损坏），不是"与官方原版逐字节相同"。
+8e5a8fd0f62f8aa668ec601cd0d4b8cde47b2163168cca5956cc225e2307f5d4  7z.exe
+e491beaaa7d165d8e1c862f55ee556148640d4d0f582b10fec072f4d9b93d268  7z.dll
+519ac0a4bded9c18ea02e0afb71f663d8c47373bd9facd3ac96a79f51d77765d  License.txt
+130b1971ac66eb2e4988fc2be9e1f0641ab61a13fb065bc0cb656be8127f35cc  History-7zip-zs.txt

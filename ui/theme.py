@@ -243,7 +243,7 @@ QComboBox QAbstractItemView {{
 }}
 
 /* ============ 表格 ============ */
-QTableWidget {{
+QTableView {{
     background: {c['surface']};
     alternate-background-color: {c['bg']};
     border: 1px solid {c['border']};
@@ -251,14 +251,14 @@ QTableWidget {{
     gridline-color: transparent;
     outline: none;
 }}
-QTableWidget::item {{
+QTableView::item {{
     padding: 6px 8px;
     border-left: none;
     border-top: none;
     border-bottom: none;
     border-right: 1px solid {c['border']};
 }}
-QTableWidget::item:selected {{
+QTableView::item:selected {{
     background: {c['row_selected']};
     color: {c['text']};
 }}

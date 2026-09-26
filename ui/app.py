@@ -1,5 +1,10 @@
 """BullBull Unpacker —— 界面。
 
+**界面上的每一句中文都在本文件里**（字面量内联），改文字直接搜那句话即可；
+不在本文件的那几处——并行路数的"16 路"文案在 `core/vault.py::worker_choices()`、
+配色在 `ui/theme.py`、图标在 `ui/icons.py`；改完**必须跑一遍** `tools/smoke_ui.py`
+（它的断言按文字/控件名写死，红了就是有断言要跟着改）。详见 `doc\开发手册.md` §18。
+
 页面结构：
     Workbench
       ├── 顶栏（仅主页面显示）
@@ -29,8 +34,11 @@ import ctypes
 from ctypes import wintypes
 
 from PySide6.QtCore import (
+    QAbstractTableModel,
     QEvent,
+    QModelIndex,
     QPoint,
+    QProcess,
     QRect,
     QSize,
     Qt,
@@ -61,6 +69,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -72,9 +81,12 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
+    QSpacerItem,
     QSpinBox,
     QStackedWidget,
     QStyledItemDelegate,
+    QTableView,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -87,7 +99,7 @@ from core import probe
 from core import appinfo
 from core import paths as paths_mod
 from core.launchargs import parse_launch_args
-from core.config import Config
+from core.config import DEFAULT_EXCLUDE_EXTS, Config
 from core.engine import Extractor, find_engines
 from core import engine as engine_mod
 from core.pipeline import (
@@ -100,7 +112,8 @@ from core.pipeline import (
     summarize,
 )
 from core.runlog import RunLog
-from core.vault import PasswordVault, sort_entries
+from core.vault import (BOOK_SOFT_WARN, BookEntry, PasswordVault, import_passwords,
+                        read_text, sort_entries, worker_choices)
 
 from .theme import Theme
 from . import icons
@@ -125,6 +138,12 @@ Task = ScanItem
 # 日志面板最多留这么多条（换主题时要整段重渲染，不设上限会越来越卡）
 MAX_LOG_ENTRIES = 800
 
+# 设置页「最多解几层」的输入上限（`sp_depth`）。**这是界面层的那一个"层数上限"**：
+# 另两个上限（`pierce._can_lift` 的递归保险丝、`flatten_same_name_shells` 的 `limit`）
+# 管的是别的事，跟它没有约束关系 —— 以前它就是个裸的 `20`（`setRange(1, 20)`），
+# 抽成常量是为了让它有名字、要改的时候搜得到（可维护性审计报告点名过这一点）。
+MAX_DEPTH_UI = 20
+
 # 文件夹汇总行的状态挂在状态格的这个角色上（代理只认它，不认 Task.status）
 FOLDER_ROLE = Qt.ItemDataRole.UserRole + 7
 
@@ -136,6 +155,11 @@ COMPACT_WIDTH = 720
 # 单实例用的本机 socket 名：第二个进程进来时把路径交给已经在跑的那个窗口
 # 命名管道的名字只有一处定义（core/single.py），客户端/服务端必须一致
 PIPE_NAME = single.PIPE_NAME
+
+# 关窗时"等任务停下来"的上限（秒），见 `Workbench.closeEvent`。
+# 到点还没收工就**不关窗**：宁可让用户等一下，也不留一个看不见的 7z 在输出目录里写盘
+# （B-2026-022）。正常情况下引擎的 `proc.kill()` 是毫秒级的，这个上限只兜"卡住的引擎"。
+CLOSE_STOP_TIMEOUT_SECONDS = 15.0
 
 
 def fmt_seconds(seconds: float) -> str:
@@ -275,6 +299,97 @@ def repolish(widget: QWidget) -> None:
 
 
 # ==========================================================================
+# 层号文案：唯一来源
+# ==========================================================================
+#
+# 「这一项在第几层」在界面上有三处（运行中的状态列 / 右上角徽标 / 结束后的汇总明细），
+# 以前各写各的：状态列从任务对象取 `layer`，徽标却拿日志文本 `re.search(r"第(\d+)层")`
+# 抠「最近一条日志的层号」——同层有多个包时，后一条日志的层号可能比前一条**小**，
+# 徽标就当着用户的面往回退（同一次解压两个层号对不上）。
+# 现在三处都从下面这两个函数取数，来源只剩「任务对象上的 `layer` / `max_layer`」。
+#
+# ⚠ 日志里 `[第N层]` 的空格格式（**无空格**）被 `smoke_core.py` 的断言钉着，
+#   而且它现在是**纯展示**、不再被界面解析 —— 别顺手把它改成 `第 N 层`。
+
+
+def layer_no(task: Task) -> int:
+    """层号的唯一来源：`layer=0`（还没进过任何一层）折成 1，不显示「第 0 层」。"""
+    return max(task.layer, 1)
+
+
+def layer_text(task: Task) -> str:
+    """层号文案的唯一来源：`第 x 层 / 第 y 层`；`max_layer=0` 时只写 `第 x 层`。
+
+    作者点名要的就是 `第 x 层 / 第 y 层` 这个写法（以前是"第 2 层" + 远处一个
+    "/ 5"，读起来像两个不相干的数字）。`max_layer=0` 表示"没有上限"
+    （没跑过 / 非嵌套包），这时硬凑一个分母只会让用户以为还有第 0 层。
+    """
+    layer = layer_no(task)
+    return (f"第 {layer} 层 / 第 {task.max_layer} 层" if task.max_layer
+            else f"第 {layer} 层")
+
+
+# ==========================================================================
+# 日志行的配色：按**行首标记**判，不按正文子串
+# ==========================================================================
+
+# 行首标记 → 颜色角色。这些标记是 core / pipeline **显式写出来的状态**：
+#   `core\pipeline.py::_apply()` 按最终状态写 `✔/✘/⚠/◑`，
+#   `core\pierce.py` 的风险提示写 `⚠`。
+LOG_MARK_COLORS: dict[str, str] = {
+    "✔": "ok", "✘": "err", "◑": "warn", "⚠": "warn", "▶": "info",
+}
+
+
+def log_color(msg: str) -> str:
+    """这一行日志该用什么颜色：**行首标记优先，正文词只作兜底**。
+
+    为什么不能只按正文子串判（`B-2026-087` 的根因）：`PierceResult.summary()`
+    给失败写的收尾文案是「**未完成**：解压失败（…）」——里面有个「完成」，
+    旧判据 `if low.startswith("✔") or "完成" in low:` 于是把
+    `✘ 结束：broken.zip — …未完成：解压失败（…）` 整行染成**绿色**
+    （行首明明是红叉）。**只要解压失败就中**，不需要任何额外条件，
+    界面看起来像成功了。
+
+    所以先看行首标记：`✔/✘/◑/⚠/▶` 是流水线按结果显式写出来的，它就是结构化状态；
+    标记认得出来，正文里写什么词都不许改写它。没有标记的行
+    （`[第N层] 完成（1.2s）`、`命中密码本：…` 这类过程日志本来就没标记）
+    才退回文本兜底 —— 兜底里**否定词排在肯定词前面**，否则「未完成」
+    这种自称否定的句子又会被「完成」两个字吃掉（同样会染绿）。
+    """
+    head = msg.lstrip()
+    for mark, role in LOG_MARK_COLORS.items():
+        if head.startswith(mark):
+            return role
+    if "失败" in msg or "错误" in msg or "未完成" in msg:
+        return "err"
+    if "完成" in msg:
+        return "ok"
+    if "命中" in msg or ("第" in msg and "层" in msg):
+        return "info"
+    if "跳过" in msg:
+        return "warn"
+    return "text_dim"
+
+
+# ==========================================================================
+# 「跑完了」的判据：唯一来源
+# ==========================================================================
+
+
+def settled(status: ItemStatus) -> bool:
+    """这一项算不算「跑完了」（总进度 / 文件夹汇总行都走它）。
+
+    `PARTIAL`（部分完成：安全停下、但有包确实没解）**也算** —— 它是终态，
+    界面画的就是「◑ 部分完成」。以前运行中的总进度用的是另一份判据元组、漏了它：
+    整批里只要有一项「部分完成」，进度条就停在 100% 以下直到整批结束；
+    而结束那一次走的是含 `PARTIAL` 的判据，**最终值恰好是对的**，所以更难发现。
+    """
+    return status in (ItemStatus.DONE, ItemStatus.FAILED,
+                      ItemStatus.SKIPPED, ItemStatus.PARTIAL)
+
+
+# ==========================================================================
 # 状态列代理：在单元格里画进度条
 # ==========================================================================
 
@@ -336,14 +451,10 @@ class StatusDelegate(QStyledItemDelegate):
             painter.setPen(QColor(c["text"]))
             painter.setFont(f)
             txt_rect = QRect(bar.right() + 10, r.top(), r.width() - bar_w - 10, r.height())
-            # 用户要的写法：**第 x 层 / 第 y 层**（以前是"第 2 层" + 远处一个"/ 5"，
-            # 读起来像两个不相干的数字）
-            layer = max(task.layer, 1)
-            text = (f"第 {layer} 层 / 第 {task.max_layer} 层" if task.max_layer
-                    else f"第 {layer} 层")
+            # 文案与层号来源都在 `layer_text()` 里（三处显示共用，见本文件上方那一节）
             painter.drawText(txt_rect,
                              int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-                             text)
+                             layer_text(task))
 
         elif task.status is Status.QUEUED:
             painter.setPen(QColor(c["text_faint"]))
@@ -370,6 +481,16 @@ class StatusDelegate(QStyledItemDelegate):
                 r,
                 int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
                 "✘  失败",
+            )
+        elif task.status is Status.PARTIAL:
+            # 「部分完成」= 安全停下了，但**有包确实没解**（重复包被指纹挡下 / 到层数上限 /
+            # 多个包不知道先解哪个）。用黄色 + ◑，别让它落进下面的 else 被画成「已跳过」。
+            painter.setPen(QColor(c["warn"]))
+            painter.setFont(f)
+            painter.drawText(
+                r,
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                f"◑  部分完成    {task.elapsed_text}",
             )
         else:
             painter.setPen(QColor(c["warn"]))
@@ -531,8 +652,13 @@ class MainPage(ThemedMixin, QWidget):
         # 所以不会写到用户真实日志里；写不进去就自动降级成"只显示不落盘"。
         try:
             self._runlog = RunLog(paths_mod.run_log_path())
-            self._runlog.session_header(f"{appinfo.APP_NAME} {appinfo.VERSION}"
-                                        + ("" if not paths_mod.is_frozen() else "（打包版）"))
+            # ★ 构建指纹（2026-09-24，TASK-060）：用户交回来一份 run.log 时，
+            #   得能说清"是哪一份代码"。读不到（便携版没这个文件）就少一段，不算错。
+            _bid = paths_mod.build_id()
+            self._runlog.session_header(
+                f"{appinfo.APP_NAME} {appinfo.VERSION}"
+                + ("" if not paths_mod.is_frozen() else "（打包版）")
+                + (f" 构建={_bid}" if _bid else ""))
         except Exception:               # noqa: BLE001 - 日志写不进去不该影响启动
             self._runlog = None
         self._log_entries: list[tuple[str, str, str]] = []
@@ -544,8 +670,12 @@ class MainPage(ThemedMixin, QWidget):
         # 这一批要跑的任务（id 列表）：总进度条的分母，开跑那一刻定死
         self._batch_ids: list[int] = []
         # 「不处理的文件类型」（.apk/.iso 这类"其实是 zip 但用户不想让它拆"的东西）。
-        # 由 Workbench 灌进来（它读配置），这里只存一份给扫描线程用。
-        self._exclude_exts: list[str] = []
+        # ★ **这里存的是"取值函数"，不是名单副本**（`B-2026-100`）：名单的唯一来源是
+        #   `Config.exclude_exts`，由 Workbench 在装配时注入。以前这里放的是**启动那一刻
+        #   拷贝的一份**，而设置页保存（`_on_save_config`）只更新 config、不同步这一份 ——
+        #   于是同一个会话里，**扫描**（清单标不标「🚫 已排除」）与**运行**
+        #   （`Piercer` 真跳不跳过）各信一份名单，用户看到的就是"设置好像时灵时不灵"。
+        self.exclude_exts_source = lambda: []
         # 「打开输出目录」当前认定的目标：多个产物时 _open_root 是公共上级
         self._open_dirs: list[str] = []
         self._open_root = ""
@@ -568,6 +698,11 @@ class MainPage(ThemedMixin, QWidget):
         root.addWidget(self.topbar)
 
         # ---- 计数卡 ----
+        # ★ 一格 = 一种 `ItemStatus`（六格），数字**原样**来自 `summarize()`
+        #   —— 与状态列、汇总行同一个来源、同一套口径（`B-2026-023`）。
+        #   以前只有四格，「失败」那一格把「已跳过」「部分完成」也加了进去：
+        #   同一批任务，统计卡写「失败 1」、状态列写「⚠ 已跳过」、汇总行写「跳过 1」，
+        #   用户会以为全军覆没、把已经解好的东西一起删掉重来。
         self.counter_row = QHBoxLayout()
         self.counter_row.setSpacing(12)
         self.stats: dict[str, QLabel] = {}
@@ -575,12 +710,18 @@ class MainPage(ThemedMixin, QWidget):
             ("queued", "待处理", "text"),
             ("running", "运行中", "info"),
             ("done", "已完成", "ok"),
+            # 「部分完成」与「已跳过」各自一格：前者有内容确实没解、后者是安全停下，
+            #   **都不是失败**（颜色跟状态列/汇总行一样走 warn）。
+            ("partial", "部分完成", "warn"),
+            ("skipped", "已跳过", "warn"),
             ("failed", "失败", "err"),
         ):
             f = card("Card")
-            f.setFixedHeight(72)
+            # 高度 64（原来 72）：六格只放"一个数字 + 一行标签"，72 显得空、也白占
+            # 纵向空间；相应地上下内边距从 10 收到 6（数字 24px 那一行本身就有 30 高）。
+            f.setFixedHeight(64)
             v = QVBoxLayout(f)
-            v.setContentsMargins(16, 10, 16, 10)
+            v.setContentsMargins(16, 6, 16, 6)
             v.setSpacing(0)
             num = label("0", "StatNum")
             num.setStyleSheet(f"color:{theme.color(color)};")
@@ -665,8 +806,8 @@ class MainPage(ThemedMixin, QWidget):
 
         row = QHBoxLayout()
         row.addStretch(1)
-        b3 = QPushButton("选择文件")
-        b4 = QPushButton("选择文件夹")
+        b3 = QPushButton("添加文件")
+        b4 = QPushButton("添加文件夹")
         b3.setMinimumWidth(110)
         b4.setMinimumWidth(110)
         row.addWidget(b3)
@@ -674,7 +815,7 @@ class MainPage(ThemedMixin, QWidget):
         row.addStretch(1)
         bv.addLayout(row)
 
-        hint = label(".zip .rar .7z · 分卷 · 伪装 · 嵌套穿透", "Faint")
+        hint = label("支持多种压缩格式、分卷压缩、视频伪装压缩包和多层嵌套解压", "Faint")
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         bv.addWidget(hint)
         bv.addStretch(1)
@@ -727,7 +868,7 @@ class MainPage(ThemedMixin, QWidget):
         lay.addWidget(btn_browse)
 
         lay.addWidget(vline())
-        lay.addWidget(label("重名", "Dim"))
+        lay.addWidget(label("重名时", "Dim"))
         self.cmb_conflict = QComboBox()
         # "自动加 (1)" 太含糊：得让人一眼看出是"重名时自动加数字序号"
         for text, value in (("自动添加数字序号", "rename"), ("覆盖", "overwrite"), ("跳过", "skip")):
@@ -760,7 +901,7 @@ class MainPage(ThemedMixin, QWidget):
         self.btn_start = QPushButton("开始")
         self.btn_start.setObjectName("Primary")         # 主色按钮（QSS 里连带收窄内边距）
         self.btn_start.setMinimumSize(96, 38)
-        self.btn_start.setToolTip("开始解压")
+        self.btn_start.setToolTip("")            # 灰着不给提示（启用时由 _sync_buttons 补）
         set_btn_icon(self.btn_start, "play", size=16, role="accent_text", theme=self.theme)
         lay.addWidget(self.btn_start)
 
@@ -854,13 +995,23 @@ class MainPage(ThemedMixin, QWidget):
             self._start_scan()
         return len(paths)
 
+    def scan_exclude_exts(self) -> list[str]:
+        """这一次扫描要用的「不处理类型」名单 —— **每次现取**，不是启动时的副本。
+
+        `B-2026-100`：它必须与运行侧（`Piercer.exclude_exts`，读的是同一个 `Config`）
+        同源。两边各存一份副本时，设置页保存之后**清单**仍按启动时的旧名单标注
+        （docx 明明已经被排除，清单里却不写「🚫 已排除」），而运行侧读的是新名单
+        —— 同一次任务、两种口径，用户只能看到"设置好像时灵时不灵"。
+        """
+        return list(self.exclude_exts_source() or [])
+
     def _start_scan(self) -> None:
         batch, self._scan_queue = self._scan_queue, []
         if not batch:
             return
-        self.append_log("扫描", f"正在扫描 {len(batch)} 个路径…", "text_dim")
+        self.append_log("扫描", f"正在扫描 {len(batch)} 个文件…", "text_dim")
         self.scan_badge.setText("扫描中…")
-        job = ScanJob(batch, self._exclude_exts, self)
+        job = ScanJob(batch, self.scan_exclude_exts(), self)
         job.sig_done.connect(self._scan_finished)
         self._scan_job = job
         job.start()
@@ -873,7 +1024,7 @@ class MainPage(ThemedMixin, QWidget):
             self.append_log("错误", f"扫描失败：{error}", "err")
         items = list(items or [])
         if not items and not error:
-            self.append_log("扫描", "这些路径里没有可处理的文件", "warn")
+            self.append_log("扫描", "这些文件里没有可解压的压缩包", "warn")
         if items:
             # ★ 跨批去重：同一个包（或它的另一个分卷）已经在清单里就不再加一行。
             #   批量扫描内部有去重，但"右键多选"是**分几批**进来的，跨批就会重复
@@ -992,8 +1143,10 @@ class MainPage(ThemedMixin, QWidget):
         # 这样任何时刻只有一个"当前该按的按钮"，不会出现两个都能按、按哪个才对的问题。
         paused = self.is_running and self._paused
         self.btn_start.setText("继续" if paused else "开始")
-        self.btn_start.setToolTip("继续解压" if paused else "开始解压")
-        self.btn_start.setEnabled(paused or (has_runnable and not self.is_running))
+        can_start = paused or (has_runnable and not self.is_running)
+        # 灰着的时候不给 tooltip（重复按钮名字没意义；作者 2026-09-22 定）
+        self.btn_start.setToolTip(("继续解压" if paused else "开始解压") if can_start else "")
+        self.btn_start.setEnabled(can_start)
         self.btn_add.setEnabled(not self.is_running)
         self.btn_clear.setEnabled(not self.is_running and bool(self.tasks))
         self.btn_clear_sel.setEnabled(not self.is_running and has_selection)
@@ -1019,6 +1172,13 @@ class MainPage(ThemedMixin, QWidget):
             st_cell = self.table.item(row, 3)
             if st_cell is not None:
                 st_cell.setData(Qt.ItemDataRole.UserRole, t)
+            # ★ 右上角徽标也吃这条跨线程通道（worker 发过来的任务对象），
+            #   不再从日志文本里 `re.search(r"第(\d+)层")` 抠层号 —— 同层有多个包时
+            #   "最近一条日志的层号"可能比上一条**小**，徽标会当着用户的面往回退。
+            #   只有**正在跑**的那一项才改徽标：跑完的那一项不该把层号又写回去
+            #   （跑完时 `_on_run_done` 会把徽标清空）。
+            if t.status is ItemStatus.RUNNING:
+                self.set_log_badge(f"第 {layer_no(t)} 层 · 穿透中")
             kind_cell = self.table.item(row, 1)
             if kind_cell is not None and t.note:
                 kind_cell.setToolTip(t.note)
@@ -1049,8 +1209,7 @@ class MainPage(ThemedMixin, QWidget):
         by_id = {id(t): t for t in self.tasks}
         chosen = [by_id[i] for i in self._batch_ids if i in by_id]
         total = len(chosen) or 1
-        done = sum(1 for t in chosen
-                   if t.status in (Status.DONE, Status.FAILED, Status.SKIPPED))
+        done = sum(1 for t in chosen if settled(t.status))
         pct = int(done / total * 100)
         self.overall.setValue(pct)
         self.overall_text.setText(f"{pct}%")
@@ -1081,7 +1240,7 @@ class MainPage(ThemedMixin, QWidget):
         留着半张表只会让人以为还有活没干，索性整表清掉。
         """
         if self.is_running:
-            self.append_log("系统", "正在跑，先「停止」再清空列表", "warn")
+            self.append_log("系统", "任务正在执行，请先点「停止」", "warn")
             return
         had = len(self.tasks)
         self.clear_tasks()
@@ -1091,11 +1250,11 @@ class MainPage(ThemedMixin, QWidget):
     def clear_selected(self) -> None:
         """「清除选中」：只把选中的那几行去掉。"""
         if self.is_running:
-            self.append_log("系统", "正在跑，先「停止」再清除选中", "warn")
+            self.append_log("系统", "任务正在执行，请先点「停止」", "warn")
             return
         rows = sorted({i.row() for i in self.table.selectedIndexes()}, reverse=True)
         if not rows:
-            self.append_log("系统", "先在清单里选几行（Ctrl/Shift 可以多选）", "warn")
+            self.append_log("系统", "请先在列表里选中要清除的行（Ctrl / Shift 可多选）", "warn")
             return
         for row in rows:
             if 0 <= row < len(self.tasks):
@@ -1156,12 +1315,19 @@ class MainPage(ThemedMixin, QWidget):
             return ("◷  排队中", "text_faint")
         if any(k.status is Status.RUNNING for k in kids):
             return ("▶  进行中", "accent")
-        done = [k for k in kids if k.status in (Status.DONE, Status.FAILED, Status.SKIPPED)]
+        # ⚠ `PARTIAL` 也算"跑完了"：漏掉它的话文件夹行会永远停在「◷ 排队中」
+        #   （它自己是 runnable=False，没人会再改它）—— 这是加新状态最容易漏的一处。
+        #   判据本身走 `settled()`（与总进度同一个来源，别再各写一份元组）。
+        done = [k for k in kids if settled(k.status)]
         if len(done) < len(kids):
             return ("◷  排队中", "text_faint")
         bad = [k for k in kids if k.status is Status.FAILED]
         if bad:
             return (f"⚠  完成 {len(kids) - len(bad)}/{len(kids)}（{len(bad)} 个失败）", "warn")
+        part = [k for k in kids if k.status is Status.PARTIAL]
+        if part:
+            return (f"◑  完成 {len(kids) - len(part)}/{len(kids)}"
+                    f"（{len(part)} 个没解完）", "warn")
         return (f"✔  完成 {len(kids)}/{len(kids)}", "ok")
 
     def _refresh_folder_rows(self) -> None:
@@ -1186,7 +1352,7 @@ class MainPage(ThemedMixin, QWidget):
     def _build_table(self) -> QWidget:
         self.table = QTableWidget(0, 4)
         # 列名里带一句引导：密码格是可点的，光靠主色不够，得把话说出来
-        self.table.setHorizontalHeaderLabels(["文件", "识别类型", "密码（点击复制）", "状态"])
+        self.table.setHorizontalHeaderLabels(["文件", "文件类型", "密码（点击复制）", "状态"])
         self.table.verticalHeader().setVisible(False)
         # 纵向分割线走 QSS 的 border-right（见 theme.py），不用 showGrid——
         # 那样连横线也一起出来，行间会显得很碎
@@ -1198,6 +1364,9 @@ class MainPage(ThemedMixin, QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.table.verticalHeader().setDefaultSectionSize(34)
+        # 表格区的最小高度：表头 + 3 行。以前这里没有下限，窗口一矮就被压到看不见行，
+        # 连"清单里到底有没有东西"都判断不了（空状态那页同理，见 Workbench 的最小尺寸）。
+        self.table.setMinimumHeight(self.TABLE_MIN_H)
 
         hh = self.table.horizontalHeader()
         hh.setHighlightSections(False)
@@ -1232,6 +1401,9 @@ class MainPage(ThemedMixin, QWidget):
 
     MIN_COL = 56
     MAX_COL = 1600
+    # 表格最小高度 = 表头(≈30) + 3 行(34×3)：拖到最小时还得看得见清单里有几条。
+    # 它是"列表槽位"两页里的一页，另一页（拖拽引导）自己会要求 ≈198，见 Workbench。
+    TABLE_MIN_H = 30 + 34 * 3
 
     def col_widths(self) -> list[int]:
         return [self.table.columnWidth(i) for i in range(self.table.columnCount())]
@@ -1456,7 +1628,8 @@ class MainPage(ThemedMixin, QWidget):
         这一行全带文字要 **802px**，而阈值只在窗口 < 752 时才收 → **760~834 这一带
         既没收、又放不下**：文字被裁、相邻按钮还会视觉上叠在一起
         （用户报的"默认大小下开始和暂停碰撞、添加文件夹显示不全"就是这个）。
-        量法见 `tests/work/probe_layout.py`；这里在运行时按同样的方式现算：
+        这几个数是这样量出来的：把这一行按四种分档各铺一次、用 `sizeHint()` 读实际宽度；
+        这里在运行时按同样的方式现算：
 
           档 0：全带文字                     需要 ≈ 800px
           档 1：清单操作四个收成图标          需要 ≈ 660px
@@ -1484,7 +1657,8 @@ class MainPage(ThemedMixin, QWidget):
         self._set_btn_mode(self.btn_clear_sel, "清除选中", stage >= 1)
         self._set_btn_mode(self.btn_clear, "清空列表", stage >= 1)
         self.btn_start.setText("" if stage >= 3 else ("继续" if self._paused else "开始"))
-        self.btn_start.setToolTip("继续解压" if self._paused else "开始解压")
+        _tip = "继续解压" if self._paused else "开始解压"
+        self.btn_start.setToolTip(_tip if (stage >= 3 or self.btn_start.isEnabled()) else "")
         self._set_btn_mode(self.btn_pause, "暂停", stage >= 2)
         self._set_btn_mode(self.btn_stop, "停止", stage >= 2)
 
@@ -1596,7 +1770,12 @@ class MainPage(ThemedMixin, QWidget):
         v.setSpacing(6)
 
         head = QHBoxLayout()
-        head.addWidget(label("实时日志", "SectionTitle"))
+        t = label("实时日志", "SectionTitle")
+        # 与右边按钮的文字对齐：标题是 12px、按钮是 13px，两个盒子各自"垂直居中"
+        # 时取整位置不同，标题会低约 1px（200% 缩放下看得清清楚楚，用户报的"一高一低"）。
+        # 底部留 2px 空白把标题抬 1px，正好与按钮的文字齐（改完用像素量过）。
+        t.setContentsMargins(0, 0, 0, 2)
+        head.addWidget(t)
         head.addStretch(1)
         # 结算结果现在写在这块日志里，所以"去哪找产物"的按钮也挂这儿：
         # 结论和出口在同一个地方，用户不用再找一遍。
@@ -1617,7 +1796,12 @@ class MainPage(ThemedMixin, QWidget):
         self.log.setObjectName("LogView")
         self.log.setReadOnly(True)
         self.log.setFont(mono_font())
-        self.log.setFixedHeight(170)
+        # 日志框高度：平时 170 固定（多一点少一点都难看），但**空间不够时先缩它**——
+        # 它给的是下限 90、上限 170。以前是 setFixedHeight(170)：窗口矮到装不下所有
+        # 区块时，布局只能去压别的（列表区被压到 111px、标题叠成一团）。
+        # 现在压缩顺序是：日志框先让位 → 再让列表到自己的下限 → 之后才轮到重叠。
+        self.log.setMinimumHeight(90)
+        self.log.setMaximumHeight(170)
         # 汇总行里带完整输出路径，按控件宽度折行比横向截断/拉滚动条好读
         self.log.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         # 跟着最新一行滚（用户手动往上翻历史时自动松开，见 _log_follow）
@@ -1651,13 +1835,19 @@ class MainPage(ThemedMixin, QWidget):
         # 右下角就是一个**计时器**：跑起来每秒跳一次，跑完显示总用时。
         # （以前写死"已用 0s · 预计剩余 —"：没开始时也显示、估计又永远算不出来，
         #   用户看着莫名其妙；他说"放个计时器就好"。）
-        self.eta = label("", "Mono")
+        # 没跑的时候也显示"总用时 0.0s"而不是留空：留空的话 0% 右边是一大片空白
+        # （用户："没开始的时候显示总用时 0.0 吧？这样就没空了"）。
+        self.eta = label("总用时 0.0s", "Mono")
         self.eta.setMinimumWidth(96)
         self.eta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         lay.addWidget(self.eta)
-        # 每秒刷新的时钟（只在运行且**没暂停**时转）
+        # 时钟（只在运行且**没暂停**时转）。**100ms 一跳，不是 1000ms**：
+        # 一秒一跳时 `用时 12.3s` 每次加的都是 1.000 秒 —— 那位小数**永远不变**，
+        # 用户看到的是一块"小数点后面不动"的假精度表（"要么只保留整数，要么能动"）。
+        # 100ms 一跳之后，短任务（<60s，带一位小数）那位小数才真是自己在走；
+        # ≥60s 换的是 `103m07s` 整秒写法，多刷几次也只是同一条文字，没有额外代价。
         self._clock = QTimer(self)
-        self._clock.setInterval(1000)
+        self._clock.setInterval(100)
         self._clock.timeout.connect(self._tick_clock)
         self._run_started = 0.0     # 本段计时的起点（暂停时清 0）
         self._elapsed = 0.0         # 已经累计的秒数（不含暂停的时间）
@@ -1677,7 +1867,7 @@ class MainPage(ThemedMixin, QWidget):
         if self._run_started and self._clock.isActive():
             return
         self._run_started = time.monotonic()
-        self.eta.setText(f"用时 {fmt_seconds(self._elapsed) or '0s'}")
+        self.eta.setText(f"用时 {fmt_seconds(self._elapsed) or '0.0s'}")
         self._clock.start()
 
     def stop_clock(self, *, keep_total: bool = True) -> None:
@@ -1687,14 +1877,18 @@ class MainPage(ThemedMixin, QWidget):
         self._run_started = 0.0
         self._elapsed = total
         if keep_total:
-            self.eta.setText(f"总用时 {fmt_seconds(total) or '0s'}")
+            self.eta.setText(f"总用时 {fmt_seconds(total) or '0.0s'}")
 
     def reset_clock(self) -> None:
-        """清空列表 / 还没开始跑时：右下角不显示任何时间。"""
+        """清空列表 / 还没开始跑时：右下角显示**归零的总用时**。
+
+        以前这里把文字清空，结果 0% 右边空一块（用户："没开始的时候显示总用时 0.0
+        吧？这样就没空了"）。归零 ≠ 留空：0.0s 一眼就能看出"还没跑过"。
+        """
         self._clock.stop()
         self._run_started = 0.0
         self._elapsed = 0.0
-        self.eta.setText("")
+        self.eta.setText("总用时 0.0s")
 
     def _total_seconds(self) -> float:
         """到现在为止真正跑了多少秒（含正在跑的这一段）。"""
@@ -1710,19 +1904,25 @@ class MainPage(ThemedMixin, QWidget):
                 self._elapsed += time.monotonic() - self._run_started
                 self._run_started = 0.0
             self._clock.stop()
-            self.eta.setText(f"已暂停 · 用时 {fmt_seconds(self._elapsed) or '0s'}")
+            self.eta.setText(f"已暂停 · 用时 {fmt_seconds(self._elapsed) or '0.0s'}")
         else:
             if not self._run_started:
                 self._run_started = time.monotonic()
             if not self._clock.isActive():
                 self._clock.start()
-            self.eta.setText(f"用时 {fmt_seconds(self._total_seconds()) or '0s'}")
+            self.eta.setText(f"用时 {fmt_seconds(self._total_seconds()) or '0.0s'}")
 
     def _tick_clock(self) -> None:
-        """每秒把"用时 Ns"刷新一次。"""
+        """每 100ms 把「用时 Ns」刷新一次（<60s 带一位小数，所以刷新率要跟得上小数位）。
+
+        文字没变就不 `setText`：跑到 60 秒以上之后是 `103m07s` 整秒写法，
+        100ms 一跳里有 9 次文字是同一个 —— 那 9 次没必要让 Qt 重排一遍标签。
+        """
         if not self._run_started:
             return
-        self.eta.setText(f"用时 {fmt_seconds(self._total_seconds()) or '0s'}")
+        text = f"用时 {fmt_seconds(self._total_seconds()) or '0.0s'}"
+        if text != self.eta.text():
+            self.eta.setText(text)
 
     # ------------------------------------------------------------------
     # 结算：写进日志
@@ -1739,13 +1939,19 @@ class MainPage(ThemedMixin, QWidget):
         done = [t for t in leaves if t.status is Status.DONE]
         failed = [t for t in leaves if t.status is Status.FAILED]
         skipped = [t for t in leaves if t.status is Status.SKIPPED]
+        partial = [t for t in leaves if t.status is Status.PARTIAL]
         used = sum(t.elapsed for t in leaves)
 
+        # 「部分完成」单独一档、并且**算进警告色**：它有内容确实没解，
+        # 混进"成功"里就等于把没解开的包藏起来（BUG-6）。
+        bits = [f"成功 {len(done)}", f"失败 {len(failed)}", f"跳过 {len(skipped)}"]
+        if partial:
+            bits.insert(1, f"部分完成 {len(partial)}")
         self.append_log(
             "汇总",
-            f"{len(leaves)} 项：成功 {len(done)} · 失败 {len(failed)} · 跳过 {len(skipped)}"
+            f"{len(leaves)} 项：" + " · ".join(bits)
             + (f" · 用时 {fmt_seconds(used)}" if used else ""),
-            "ok" if not (failed or skipped) else "warn",
+            "ok" if not (failed or skipped or partial) else "warn",
         )
         for t in leaves:
             # 明细行的左格留空：它们挂在上面那条「汇总」下面，是同一段的一部分，
@@ -1757,8 +1963,11 @@ class MainPage(ThemedMixin, QWidget):
                     bits.append(f"输出 {out}")
                 if t.password:
                     bits.append(f"密码 {t.password}")
+                # 没解到任何一层就不提层号（`layer=0`）；数字走同一个层号来源。
+                # 这里的字面是 `N 层`（与 `PierceResult.summary()` 的日志口径一致），
+                # 不是状态列那套 `第 x 层 / 第 y 层`——所以取的是 `layer_no()`。
                 if t.layer:
-                    bits.append(f"{t.layer} 层")
+                    bits.append(f"{layer_no(t)} 层")
                 if t.elapsed:
                     bits.append(fmt_seconds(t.elapsed))
                 self.append_log(
@@ -1767,7 +1976,12 @@ class MainPage(ThemedMixin, QWidget):
                     "ok",
                 )
             else:
-                mark, color = ("✘", "err") if t.status is Status.FAILED else ("⚠", "warn")
+                if t.status is Status.FAILED:
+                    mark, color = "✘", "err"
+                elif t.status is Status.PARTIAL:
+                    mark, color = "◑", "warn"      # 部分完成：黄色 + ◑，和"已跳过"区分开
+                else:
+                    mark, color = "⚠", "warn"
                 why = t.note or t.stop_reason or "未完成"
                 self.append_log("", f"{mark}  {t.name}  —  {why}", color)
 
@@ -1842,21 +2056,16 @@ class MainPage(ThemedMixin, QWidget):
     # ------------------------------------------------------------------
 
     def log_line(self, message: str) -> None:
-        """给 core 的日志回调用的入口：自动打时间戳并按内容着色。"""
+        """给 core 的日志回调用的入口：自动打时间戳、按**行首标记**着色。
+
+        判据本身在模块级 `log_color()` 里（纯函数，`smoke_ui.py` 直接喂它）。
+        这里**不再**按正文子串判色 —— 那正是 `B-2026-087`：失败收尾写的是
+        「未完成：解压失败（…）」，一个「完成」就把整行染绿了。
+        """
         msg = message.rstrip()
         if not msg:
             return
-        color = "text_dim"
-        low = msg
-        if low.startswith("✔") or "完成" in low:
-            color = "ok"
-        elif low.startswith("✘") or "失败" in low or "错误" in low:
-            color = "err"
-        elif low.startswith("▶") or "命中" in low or "第" in low and "层" in low:
-            color = "info"
-        elif low.startswith("⚠") or "跳过" in low:
-            color = "warn"
-        self.append_log(time.strftime("%H:%M:%S"), msg, color)
+        self.append_log(time.strftime("%H:%M:%S"), msg, log_color(msg))
 
     def set_log_badge(self, text: str) -> None:
         self.log_badge.setText(text)
@@ -1886,7 +2095,7 @@ class MainPage(ThemedMixin, QWidget):
             return
         self._log_entries.append((tag, msg, color))
         self._flush_log()
-        # 面板里出现过的内容同时落盘到 logs/run.log（带轮转、密码打码）：
+        # 面板里出现过的内容同时落盘到 logs/run.log（带轮转，密码原样落盘）：
         # 用户的理解是"日志文件应该记下日志窗口显示的东西"——ui.log 只管启动/异常。
         # 写文件失败绝不能影响界面，所以 RunLog 内部一律静默。
         if self._runlog is not None:
@@ -1998,17 +2207,18 @@ class MainPage(ThemedMixin, QWidget):
 
     # ------------------------------------------------------------------
     def _refresh_stats(self) -> None:
+        """计数卡：一格一种状态，数字**原样**来自 `summarize()`（`B-2026-023`）。
+
+        这里刻意不做任何合并 —— 状态列画的是「⚠ 已跳过 / ◑ 部分完成 / ✘ 失败」，
+        汇总行写的是「成功 N · 部分完成 N · 失败 N · 跳过 N」，三处必须是同一套
+        `ItemStatus` 口径。以前「失败」那一格把 `skipped` + `partial` 也加了进去
+        （理由是"不然它们会从四张卡里凭空消失"），结果是同一批任务三处口径打架，
+        用户会以为全军覆没、把已经解好的东西一起删掉重来。
+        让它们不消失的正确做法是**各自有一格**，不是折进「失败」。
+        """
         counts = summarize(self.tasks)
         for key, lb in self.stats.items():
-            if key == "queued":
-                lb.setText(str(counts.get("queued", 0)))
-            elif key == "running":
-                lb.setText(str(counts.get("running", 0)))
-            elif key == "done":
-                lb.setText(str(counts.get("done", 0)))
-            elif key == "failed":
-                # 失败计数把「已跳过」也算进去，否则跳过的东西看着像凭空消失
-                lb.setText(str(counts.get("failed", 0) + counts.get("skipped", 0)))
+            lb.setText(str(counts.get(key, 0)))
 
 
 
@@ -2079,7 +2289,7 @@ class PasswordDialog(QDialog):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("输入密码")
+        self.setWindowTitle("需要密码")
         self.setModal(True)
         # 跟主窗口一样去掉系统标题栏：无边框 + DWM 圆角（不透明，字才不糊），
         # 自己画一个"标题 + ✕"，标题那一条还能拖着走（见 mousePressEvent）。
@@ -2150,6 +2360,11 @@ class PasswordDialog(QDialog):
         b_skip.clicked.connect(self.reject)
         btn_test.clicked.connect(self._verify)
         self.edit.returnPressed.connect(self._verify)
+        # ★ `B-2026-025`：输入框**一动**就把上一次的错误提示清掉。
+        #   以前只接 `returnPressed`，于是重新输入之后下面还挂着上一次的「✘ 请先输入密码」，
+        #   用户会以为这行说的是当前这次输入。只清 ✘ 开头的那种 —— 「验证中…」和
+        #   验证结果不该被敲键清掉（它们说的不是"这次输入不对"）。
+        self.edit.textChanged.connect(self._clear_error_hint)
         self.btn_test = btn_test
         self.btn_skip = b_skip
 
@@ -2202,6 +2417,11 @@ class PasswordDialog(QDialog):
         self.hint.setText(text)
         self.hint.setStyleSheet(f"color:{self.theme.color(color)};")
 
+    def _clear_error_hint(self) -> None:
+        """用户开始改密码 → 上一次的错误提示不该再挂着（`B-2026-025`）。"""
+        if self.hint.text().startswith("✘"):
+            self._say("", "text_dim")
+
     def _verify(self) -> None:
         """真去验证：调引擎 test，不假装成功。
 
@@ -2220,7 +2440,7 @@ class PasswordDialog(QDialog):
             self._say("✘ 请先输入密码", "warn")
             return
         if self.verifier is None:
-            self._say("（未接引擎，无法验证）", "text_dim")
+            self._say("无法验证：没有可用的解压引擎", "text_dim")
             return
         if self._job is not None:
             return                       # 已经在验证了，别叠加
@@ -2253,12 +2473,81 @@ class PasswordDialog(QDialog):
             self.accepted_password = pw
             self.accept()
         else:
-            self._say(f"✘ 密码不对（{used:.1f}s），改一下再试", "err")
+            self._say("✘ 密码不对，请修改后重试", "err")
 
 
 # ==========================================================================
 # 密码本页面
 # ==========================================================================
+
+
+class VaultTableModel(QAbstractTableModel):
+    """密码本表格的数据源（**虚拟化**：视图只给看得见的那几十行要数据）。
+
+    为什么不用 `QTableWidget`：它每个单元格都要建一个 `QTableWidgetItem`，
+    实测 10 万行要多花 **约 130MB 内存、重建 0.55 秒**（手册 §20.15 ③，整进程 RSS 量出来的）。
+    密码本是"攒出来的资产"，用户要看**全部**条目，所以不能靠"只渲染前 N 行"糊过去 ——
+    这里只持有一个 `list[BookEntry]`（本来就在内存里），10 万行的实测增量是 **0MB / <1ms**。
+    """
+
+    HEADERS = ("密码", "成功次数")
+
+    def __init__(self, theme: Theme, parent=None) -> None:
+        super().__init__(parent)
+        self.theme = theme
+        self.rows: list[BookEntry] = []
+
+    # -- 数据 ----------------------------------------------------------
+
+    def set_rows(self, rows: list[BookEntry]) -> None:
+        """整批换掉（搜索/重载/换密码本都走这里）。"""
+        self.beginResetModel()
+        self.rows = rows
+        self.endResetModel()
+
+    def password_at(self, row: int) -> str:
+        """这一行的**真实**密码（空密码是空串，不是 None）—— 删除时用的就是它。"""
+        return self.rows[row].password
+
+    # -- QAbstractTableModel ------------------------------------------
+
+    def rowCount(self, parent=QModelIndex()) -> int:          # noqa: N802
+        return 0 if parent.isValid() else len(self.rows)
+
+    def columnCount(self, parent=QModelIndex()) -> int:       # noqa: N802
+        return 0 if parent.isValid() else len(self.HEADERS)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+        entry = self.rows[index.row()]
+        col = index.column()
+        if role == Qt.ItemDataRole.DisplayRole:
+            if col == 0:
+                return entry.password or "（空密码）"
+            return f"{entry.hits} 次" if entry.hits else "—"
+        if role == Qt.ItemDataRole.ForegroundRole and col == 1 and entry.hits:
+            return QColor(self.theme.color("ok"))
+        if role == Qt.ItemDataRole.UserRole and col == 0:
+            return entry.password
+        return None
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):  # noqa: N802
+        if role != Qt.ItemDataRole.DisplayRole:
+            return None
+        if orientation == Qt.Orientation.Horizontal and 0 <= section < len(self.HEADERS):
+            return self.HEADERS[section]
+        return None
+
+
+def editor_exe() -> str:
+    """用哪个编辑器打开密码本（默认记事本）。
+
+    想换成 Notepad++/VSCode 之类：设环境变量 `SMART_UNZIP_EDITOR` 指到那个 exe 就行
+    （路径带空格要带引号）。**只影响"用某个编辑器打开"，不影响程序自己的读写。**
+    """
+    raw = os.environ.get("SMART_UNZIP_EDITOR", "").strip().strip('"')
+    return raw or "notepad.exe"
 
 
 class LibraryPage(ThemedMixin, QWidget):
@@ -2298,11 +2587,26 @@ class LibraryPage(ThemedMixin, QWidget):
         self.ed_search = QLineEdit()
         self.ed_search.setPlaceholderText("搜索密码…")
         self.ed_search.setMinimumHeight(32)
-        self.ed_search.textChanged.connect(lambda _t: self._reload_rows())
+        # **搜索防抖**：密码本可能有几万条，而重建表格是 O(行数)（10 万行实测 ~0.7s/次）——
+        # 每敲一个字都重建会一顿一顿。停手 200ms 再重建，手感立刻正常（见手册 §20.15）。
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(200)
+        self._search_timer.timeout.connect(self._reload_rows)
+        self.ed_search.textChanged.connect(lambda _t: self._search_timer.start())
         top.addWidget(self.ed_search, 1)
         reload_btn = QPushButton("重新载入")
+        reload_btn.setToolTip("从磁盘重新读取（在别处修改过密码本，或刚用记事本编辑过）")
         reload_btn.clicked.connect(self.reload)
         top.addWidget(reload_btn)
+        # 用记事本编辑：密码本是纯文本，用户想批量改/贴一大段时比在表格里点更快。
+        # 关掉编辑器之后**自动重新载入**，不会让用户改完还得手动点一下（见 _after_edit）。
+        self.btn_notepad = QPushButton("用记事本编辑")
+        self.btn_notepad.setToolTip("用记事本编辑密码本，每行一个密码。\n"
+                                    "保存并关闭后会自动重新载入。\n"
+                                    "注意：编辑期间请勿在本程序中修改密码本。")
+        self.btn_notepad.clicked.connect(self._edit_in_notepad)
+        top.addWidget(self.btn_notepad)
         bl.addLayout(top)
 
         add_row = QHBoxLayout()
@@ -2316,13 +2620,27 @@ class LibraryPage(ThemedMixin, QWidget):
         add_btn.clicked.connect(self._add_password)
         add_row.addWidget(add_btn)
         self.btn_del = QPushButton("删除选中")
-        self.btn_del.setToolTip("可以多选：Ctrl 点选、Shift 连选、鼠标框选，或按 Delete")
+        # self.btn_del.setToolTip("可以多选：Ctrl 点选、Shift 连选、鼠标框选，或按 Delete")
         self.btn_del.clicked.connect(self._remove_selected)
         add_row.addWidget(self.btn_del)
+        self.btn_import = QPushButton("批量导入")
+        self.btn_import.setToolTip("从 txt 批量导入，每行一个密码，追加到密码本末尾")
+        self.btn_import.clicked.connect(self._import_passwords)
+        add_row.addWidget(self.btn_import)
         bl.addLayout(add_row)
 
-        self.table = QTableWidget(0, 2)
-        self.table.setHorizontalHeaderLabels(["密码", "成功次数"])
+        # ★ 两本密码本并存的提示（`B-2026-058`）：默认隐藏，**有分裂才显示**。
+        #   位置在**表格上方**（2026-09-23 截图核对后从表格下方挪上来的）：这个场景下
+        #   用户第一眼看到的是「共 0 个密码」+ 一张空表 —— 提示压在空表下面等于没提示。
+        self.split_warn = label("", "Danger", wrap=True)
+        self.split_warn.setVisible(False)
+        bl.addWidget(self.split_warn)
+
+        # 密码本条目可以很多（用户明说要能看到全部）：用 QTableView + 自定义 model
+        # **虚拟化**，视图只给看得见的那几十行要数据（内存从 165MB 降到 ~1MB，见 VaultTableModel）。
+        self.model = VaultTableModel(theme, self)
+        self.table = QTableView()
+        self.table.setModel(self.model)          # 表头文字由 model.headerData 给
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
@@ -2344,7 +2662,12 @@ class LibraryPage(ThemedMixin, QWidget):
         shortcut.activated.connect(self._remove_selected)
         bl.addWidget(self.table, 1)
 
-        bl.addWidget(label("尝试顺序：文件名 → 本表（成功次数多优先）→ 空密码，全不中才弹窗", "Faint"))
+        # 空状态引导：密码本为空时告诉用户这里是干什么的（作者 2026-09-22 同意新增）
+        self.empty_hint = label(
+            "密码本为空。可在这里保存常用的解压密码，解压时会自动尝试。", "Hint")
+        bl.addWidget(self.empty_hint)
+
+        bl.addWidget(label("解压加密包时，会自动尝试文件名和密码本中的密码；都不匹配时再提示输入。", "Faint"))
 
         self.file_label = label("", "Faint")
         bl.addWidget(self.file_label)
@@ -2361,6 +2684,16 @@ class LibraryPage(ThemedMixin, QWidget):
     def set_vault(self, vault: PasswordVault) -> None:
         self.vault = vault
         self.reload()
+
+    def set_data_warning(self, text: str) -> None:
+        """两本密码本并存时的提示（`B-2026-058`）；空串 = 隐藏。
+
+        裁决 `J-9 = A`：**只提示**，不自动合并、不做引导合并、不删任何一份。
+        """
+        if not hasattr(self, "split_warn"):
+            return
+        self.split_warn.setText(text)
+        self.split_warn.setVisible(bool(text))
 
     def reload(self) -> None:
         """从磁盘重读（密码本可能在外部被编辑过）。"""
@@ -2379,21 +2712,24 @@ class LibraryPage(ThemedMixin, QWidget):
         ordered = sort_entries(self.vault.entries)
         rows = [e for e in ordered if not keyword or keyword in e.password]
 
-        self.table.setRowCount(len(rows))
-        for r, entry in enumerate(rows):
-            shown = entry.password or "（空密码）"
-            cell = QTableWidgetItem(shown)
-            cell.setData(Qt.ItemDataRole.UserRole, entry.password)   # 删除时用真值
-            self.table.setItem(r, 0, cell)
+        # 全部条目都进 model（视图只渲染看得见的那几十行），**不截断**：
+        # 密码本是攒出来的资产，用户要看得到全部（内存代价见 VaultTableModel 的注释）。
+        self.model.set_rows(rows)
 
-            hits = QTableWidgetItem(f"{entry.hits} 次" if entry.hits else "—")
-            if entry.hits:
-                hits.setForeground(QColor(self.theme.color("ok")))
-            self.table.setItem(r, 1, hits)
-
-        self.summary_label.setText(f"共 {len(self.vault.entries)} 个密码")
+        # 条目多只说一句提醒，**绝不删**（每个包都要逐个试，慢是正常的）
+        total = len(self.vault.entries)
+        if getattr(self, "empty_hint", None) is not None:
+            self.empty_hint.setVisible(total == 0 and not keyword)
+        note = f"共 {total} 个密码"
+        if total > BOOK_SOFT_WARN:
+            note += f"（超过 {BOOK_SOFT_WARN} 条，尝试时间可能较长）"
+        if keyword:
+            note += f" · 筛出 {len(rows)} 条"
+        self.summary_label.setText(note)
         self.summary_label.setStyleSheet("")
         self._summary_role = ""
+        if self.file_label is not None:
+            self.file_label.setText(f"文件：{self.vault.book_path or '（还没落盘）'}")
 
     def _recolor_summary(self) -> None:
         """把标题栏右侧那句反馈按当前主题重新上色（_flash 之后换主题的情况）。"""
@@ -2407,37 +2743,106 @@ class LibraryPage(ThemedMixin, QWidget):
     def _add_password(self) -> None:
         if self.vault is None:
             return
-        pw = self.ed_new.text().strip()
-        if not pw:
-            self._flash(False, "先在框里输入密码")
+        # 原样收：不 strip（首尾空格也可能是密码的一部分，密码本会用 base64 存住）
+        pw = self.ed_new.text()
+        if pw == "":
+            self._flash(False, "请在框里输入密码")
             return
         if self.vault.find(pw):
             self.ed_new.clear()
-            self._flash(False, "这个密码已经在表里了")
+            self._flash(False, "这个密码已经在密码本里了")
             return
         ok = self.vault.add(pw)
         self.ed_new.clear()
         self.reload()          # 先刷新，再报话（reload 会把提示行改写成"共 N 个密码"）
         self._flash(ok, f"已添加：{pw}" if ok else f"写入失败：{self.vault.last_write_error}")
 
+    def _import_passwords(self) -> None:
+        """批量导入：从 txt 一行一个密码，**追加到末尾**（不删、不改已有条目）。
+
+        两种文件都认：
+          * 普通清单（一行一个密码）→ 每行**原样**当密码（不 strip、不截备注）；
+          * 本程序自己的密码本（首行是 `# 密码本 …`）→ 按密码本规则解析：
+            跳过注释、`\\B64:` 行解回来（成功次数不带过来）。
+        """
+        if self.vault is None:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择密码清单", "", "文本文件 (*.txt);;所有文件 (*)")
+        if not path:
+            return
+        try:
+            text = read_text(path)              # 容忍 UTF-8 / GBK / BOM
+        except OSError as exc:
+            self._flash(False, f"无法读取这个文件：{exc}")
+            return
+        head = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+        pws = import_passwords(text, vault_like=head.startswith("# 密码本"))
+        added, dup, empty = self.vault.add_many(pws)
+        self.reload()
+        note = f"导入 {added} 条"
+        if dup:
+            note += f"，跳过重复 {dup} 条"
+        if empty:
+            note += f"，跳过空行 {empty} 条"
+        if self.vault.last_write_error:
+            self._flash(False, f"写入失败：{self.vault.last_write_error}")
+        else:
+            self._flash(True, f"{note}（现在共 {len(self.vault.entries)} 条）")
+
+    # -- 用记事本编辑 --------------------------------------------------
+
+    def _edit_in_notepad(self) -> None:
+        """用记事本打开密码本；**关掉之后自动重新载入**。
+
+        为什么这么做（而不是直接在表格里改）：密码本是纯文本，用户想一次贴一大段、
+        或者在别处生成好清单时，用编辑器比在表格里一行行点快得多。
+
+        两条安全约定：
+          * 打开之前先确保文件存在（空密码本也要有个正经文件头，否则记事本会新建一个空文件，
+            用户存盘后我们读到的就是"没有文件头"的东西）；
+          * 编辑期间本程序别写入（提示里写明了）—— 关窗后我们按磁盘内容重读，谁最后存盘算谁的。
+        """
+        if self.vault is None:
+            return
+        path = self.vault.book_path
+        if not path:
+            self._flash(False, "密码本文件还没有创建，请先添加一条密码")
+            return
+        if not os.path.isfile(path):
+            if not self.vault.save():          # 文件还没有：先写一份带文件头的空本
+                self._flash(False, f"无法写入这个文件：{self.vault.last_write_error}")
+                return
+        self._flash(True, f"已在编辑器里打开：{os.path.basename(path)}（存盘后关掉它，这里会自动重载）")
+        if not self._spawn_editor(path):
+            self._flash(False, f"打不开编辑器（{editor_exe()}）—— 文件在：{path}")
+
+    def _spawn_editor(self, path: str) -> bool:
+        """把编辑器拉起来（**单独一个方法，方便测试打桩**，不必真开记事本）。"""
+        proc = QProcess(self)
+        proc.finished.connect(self._after_edit)          # 关窗/退出 → 自动重载
+        proc.start(editor_exe(), [path])
+        return proc.waitForStarted(3000)
+
+    def _after_edit(self, *_args) -> None:
+        """编辑器关掉了：按磁盘内容重读（用户可能刚在里面改了一大批）。"""
+        if self.vault is None:
+            return
+        self.reload()
+        self._flash(True, f"已重新载入（现在共 {len(self.vault.entries)} 条）")
+
     def _selected_passwords(self) -> list[str]:
         """当前选中的行 → 真实密码值（多选顺序按行号，去重）。
 
-        空密码那一行的 data 是空串而不是 None，所以判"有没有取到"只能看 None：
-        以前写成 `data(UserRole) or cell.text()`，空密码就退化成拿显示文案
+        取的是数据源里的 `BookEntry.password`（空密码是**空串**而不是 None）：
+        以前写成 `item.data(UserRole) or item.text()`，空密码就退化成拿显示文案
         「（空密码）」去删，永远删不掉。
         """
-        model = self.table.selectionModel()
-        if model is None:
+        selection = self.table.selectionModel()
+        if selection is None:
             return []
-        out: list[str] = []
-        for index in sorted(model.selectedRows(), key=lambda i: i.row()):
-            cell = self.table.item(index.row(), 0)
-            if cell is None:
-                continue
-            raw = cell.data(Qt.ItemDataRole.UserRole)
-            out.append(cell.text() if raw is None else str(raw))
-        return list(dict.fromkeys(out))
+        rows = sorted(i.row() for i in selection.selectedRows())
+        return list(dict.fromkeys(self.model.password_at(r) for r in rows))
 
     def _remove_selected(self) -> None:
         """删除选中（支持多选，一次删一批）。删除前必须确认。
@@ -2449,23 +2854,11 @@ class LibraryPage(ThemedMixin, QWidget):
             return
         pws = self._selected_passwords()
         if not pws:
-            self._flash(False, "先选中要删的行（Ctrl / Shift 可以多选）")
+            self._flash(False, "请先选中要删除的行（Ctrl / Shift 可多选）")
             return
 
         shown = [pw if pw else "（空密码）" for pw in pws]
-        if len(pws) == 1:
-            question = f"确定从密码本里删除「{shown[0]}」吗？"
-        else:
-            head = "、".join(shown[:5]) + ("…" if len(shown) > 5 else "")
-            question = f"确定从密码本里删除这 {len(pws)} 条吗？\n\n{head}"
-        ok = QMessageBox.question(
-            self,
-            f"删除 {len(pws)} 条密码" if len(pws) > 1 else "删除密码",
-            question,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if ok != QMessageBox.StandardButton.Yes:
+        if not self._ask_remove(len(pws), shown):
             self._flash(True, "已取消")
             return
 
@@ -2476,9 +2869,45 @@ class LibraryPage(ThemedMixin, QWidget):
         if removed == len(pws):
             self._flash(True, f"已删除 {removed} 条" if removed > 1 else f"已删除：{shown[0]}")
         elif removed:
-            self._flash(True, f"删了 {removed} 条，另有 {len(pws) - removed} 条没找到")
+            self._flash(True, f"删了 {removed} 条，另有 {len(pws) - removed} 条未能删除")
         else:
-            self._flash(False, "删除失败（密码本写不进去？）")
+            self._flash(False, "删除失败：密码本无法写入")
+
+    def _build_remove_box(self, count: int, shown: list[str]
+                          ) -> "tuple[QMessageBox, QPushButton, QPushButton]":
+        """建出「确定删除密码」确认框（**不 `exec()`**）→ `(框, 删除按钮, 取消按钮)`。
+
+        全工程只有这一处删除确认。以前用的是 `QMessageBox.question`：中文问句配
+        **英文 Yes / No**（Qt 的中文翻译没加载），而且整个框是系统浅色底 —— 深色主题下
+        像另一个程序的弹窗（`B-2026-026`）。现在自己加按钮（中文），并且给它
+        `objectName="Dialog"` —— 主题 QSS 里那条 `#Dialog` 规则会给它应用自己的底色，
+        按钮也就跟着主题走。
+
+        默认按钮 = **取消**：密码是攒出来的资产（成功次数就是它的价值），误删一条
+        得重新靠解压碰回来，回车误触不该删东西。
+
+        单独抽出来是为了**能被断言**：文案、按钮、默认项都不该靠真点对话框来测。
+        """
+        box = QMessageBox(self)
+        box.setObjectName("Dialog")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle(f"删除 {count} 条密码" if count > 1 else "删除密码")
+        if count == 1:
+            box.setText(f"确定从密码本里删除「{shown[0]}」吗？")
+        else:
+            head = "、".join(shown[:5]) + ("…" if len(shown) > 5 else "")
+            box.setText(f"确定从密码本里删除这 {count} 条吗？\n\n{head}")
+        del_btn = box.addButton("删除", QMessageBox.ButtonRole.DestructiveRole)
+        cancel_btn = box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(cancel_btn)
+        box.setEscapeButton(cancel_btn)
+        return box, del_btn, cancel_btn
+
+    def _ask_remove(self, count: int, shown: list[str]) -> bool:
+        """问一句「确定删吗」 → `True` = 删，`False` = 取消。"""
+        box, del_btn, _cancel_btn = self._build_remove_box(count, shown)
+        box.exec()
+        return box.clickedButton() is del_btn
 
     def _flash(self, ok: bool, text: str) -> None:
         """标题栏右侧给一句即时反馈（成功失败都说话，别静默）。"""
@@ -2531,6 +2960,9 @@ class SettingsPage(ThemedMixin, QWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         inner = QWidget()
         scroll.setWidget(inner)
+        # 留给测试/调试用：`body` 是滚动区里真正的内容，它"想要多宽"决定会不会出横向滚动条
+        self.scroll = scroll
+        self.body = inner
         v = QVBoxLayout(inner)
         v.setContentsMargins(0, 0, 6, 0)
         v.setSpacing(12)
@@ -2563,42 +2995,86 @@ class SettingsPage(ThemedMixin, QWidget):
         b2.setContentsMargins(16, 14, 16, 14)
         b2.setSpacing(9)
         b2.addWidget(label("解压行为", "SectionTitle"))
-        g = QHBoxLayout()
-        g.setSpacing(24)
-        g.addWidget(label("最大嵌套层数", "Dim"))
+        # 两列网格摆放：以前全挤在一行里，窗口默认宽度（约 800）下最后的「密码尝试线程数」会被
+        # 挤出可视区（用户报的"默认宽度看不到线程选项"）。两列之后每格 ~350px，最小宽度
+        # 720 也放得下；以后再加设置项，按 (行, 列) 往下排就行，别再加回单行。
+        #
+        # 每块**再拆成 label / 控件 / 单位 三个网格列**（不是全塞进一个 QHBoxLayout）：
+        # 用户报的"这几个东西怪乱的"就是这么来的 —— 挤在 HBox 里时 label 只占自己那点宽度，
+        # 输入框的起点跟着**各自 label 的字数**跑（「单个任务超时」比「密码尝试线程数」少一个字，
+        # 右列两行的框就错开 13px），同列输入框宽度也不一样（80 / 108），右缘再错一次。
+        # 拆列之后列宽由该列最宽的那一项定：label 右对齐、输入框一样宽 → 两行必然对齐。
+        g = QGridLayout()
+        g.setHorizontalSpacing(8)
+        g.setVerticalSpacing(9)
+
+        def _box(widget, width: int) -> QWidget:
+            """把输入框装进一个**定宽容器**再进网格。
+
+            为什么不直接进网格：`QDoubleSpinBox` 的 sizeHint 是 **242px**
+            （上限 1e9 + 两位小数，"1000000000.00" 就得这么宽），直接进网格会把整列撑到
+            242px，后面的「GB」被推到离框老远的地方。容器只按里面那个定宽控件报尺寸。
+            """
+            holder = QWidget()
+            lay = QHBoxLayout(holder)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(0)
+            widget.setFixedWidth(width)
+            lay.addWidget(widget)
+            lay.addStretch(1)
+            return holder
+
+        def _field(row: int, block: int, text: str, widget, unit: str = "") -> None:
+            """`block` 是「第几块」（0=左、1=右），每块占 3 列，块之间留一列空隙。"""
+            base = block * 4
+            g.addWidget(label(text, "Dim"), row, base,
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            g.addWidget(widget, row, base + 1)
+            if unit:
+                g.addWidget(label(unit, "Faint"), row, base + 2)
+
+        # 宽度**同一列取同一个值**（左 108 / 右 92）：以前 80 / 108、90 / 92 混着来，
+        # 同一列里两个框的右缘差 28px，看着就是没对齐。框本身由 `_box()` 定宽。
         sp = QSpinBox()
-        sp.setRange(1, 20)
+        sp.setRange(1, MAX_DEPTH_UI)
         sp.setValue(5)
-        sp.setFixedWidth(80)
-        g.addWidget(sp)
         self.sp_depth = sp
-        g.addSpacing(16)
-        g.addWidget(label("单任务超时", "Dim"))
+
         sp2 = QSpinBox()
         sp2.setRange(1, 600)
         sp2.setValue(30)
-        sp2.setFixedWidth(90)
-        g.addWidget(sp2)
         self.sp_timeout = sp2
-        g.addWidget(label("分钟", "Faint"))
-        g.addSpacing(16)
-        g.addWidget(label("剩余空间下限", "Dim"))
+
         sp3 = QDoubleSpinBox()
-        sp3.setRange(0.0, 1000.0)
-        sp3.setValue(5.0)
-        sp3.setFixedWidth(90)
-        g.addWidget(sp3)
+        # 上限只是 `QDoubleSpinBox` 的必填项，**不是**一条建议区间：12 TB 的盘要留几 TB 也填得下
+        sp3.setRange(0.0, 1e9)
+        sp3.setValue(1.0)
         self.sp_free = sp3
-        g.addWidget(label("GB", "Faint"))
-        g.addStretch(1)
+
+        cmb = QComboBox()
+        for value, text in worker_choices():      # 1 / 2 / 4 / 8 / 16 …（到本机逻辑核数）
+            cmb.addItem(text, value)
+        cmb.setCurrentIndex(cmb.count() - 1)      # 默认 = 最大（本机逻辑核数）
+        self.cmb_workers = cmb
+
+        _field(0, 0, "最大嵌套层数", _box(sp, 108))
+        _field(0, 1, "单个任务超时", _box(sp2, 92), "分钟")
+        _field(1, 0, "最低剩余空间", _box(sp3, 108), "GB")
+        _field(1, 1, "密码尝试线程数", _box(cmb, 92))
+        g.setColumnMinimumWidth(3, 8)             # 两块之间的空隙列（这一列没有控件）
+        # 最右一列放一个"吃宽度"的空格项。**光写 `setColumnStretch` 不生效**：
+        # QGridLayout 会把没有任何项的空列整个忽略掉，于是多出来的宽度转手塞给别的列。
+        g.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum),
+                  0, 7, 2, 1)
+        g.setColumnStretch(7, 1)                  # 多出来的宽度全给最右边，控件不会被拉开
         b2.addLayout(g)
         # 文案 → Config 字段名的映射，别靠顺序对齐
         for text, key, default in (
             ("解压成功后删除原压缩包", "remove_source", False),
-            ("删除解出来的嵌套包（省空间）", "remove_intermediate", True),
-            ("单层文件夹自动上提", "flatten", True),
-            ("识别内嵌压缩包（视频等伪装，较慢）", "scan_appended", True),
-            ("清理文件名里的「删」字", "clean_delete", True),
+            ("删除解压产生的中间压缩包", "remove_intermediate", True),
+            ("自动删除多余的中间文件夹", "flatten", True),
+            ("扫描伪装的内嵌压缩包", "scan_appended", True),
+            ("清理文件名中的「删」字", "clean_delete", True),
         ):
             cb = QCheckBox(text)
             cb.setChecked(default)
@@ -2654,21 +3130,32 @@ class SettingsPage(ThemedMixin, QWidget):
         b6.setSpacing(9)
         b6.addWidget(label("不处理的文件类型", "SectionTitle"))
         self.ed_exclude = QLineEdit()
-        self.ed_exclude.setPlaceholderText("apk iso img dmg msi deb rpm jar")
+        # ★ 提示文字从 `DEFAULT_EXCLUDE_EXTS` **现取**（2026-09-26）：以前这里手抄了一份
+        #   名单，默认值一改它就落后（又一处"第二份真相"）。注意它只在用户把这一栏
+        #   **清空**时才看得见 —— `load_config()` 总把当前名单 `setText` 进去。
+        self.ed_exclude.setPlaceholderText(" ".join(DEFAULT_EXCLUDE_EXTS))
         b6.addWidget(self.ed_exclude)
-        note6 = label("空格分隔，不用带点。仍会列出来，但不会解压。", "Hint")
+        note6 = label("空格分隔扩展名，跳过的文件仍会显示。", "Hint")
         note6.setWordWrap(True)
         b6.addWidget(note6)
         v.addWidget(c6)
 
-        # 数据放在哪：只留两个入口按钮，位置信息挂在 tooltip 上（用户要求删掉说明文字）
+        # 数据放在哪：两个入口按钮 + **这次用的目录**（原来这段是隐藏的，见下）
         c7 = card("Card")
         b7 = QVBoxLayout(c7)
         b7.setContentsMargins(16, 14, 16, 14)
         b7.setSpacing(9)
-        self.lbl_paths = label("", "Hint")          # 只用于 tooltip / 测试断言，不显示
-        self.lbl_paths.setVisible(False)
+        # ★ 2026-09-23（`B-2026-058`）：数据目录**必须看得见**。判定用真写探针、进程内只判一次，
+        #   所以它只会在**两次运行之间**翻转（portable ↔ appdata）—— 以前这里 `setVisible(False)`、
+        #   界面上一句提示都没有，用户看到的是「密码本空了」（其实是另一本）。
+        #   当初要求删掉的是"一大段说明文字"，所以这里只留两行**事实**：
+        #   这次用的目录 + 两个数据文件名。分裂提示另起一条（默认隐藏）。
+        self.lbl_paths = label("", "Hint")
+        self.lbl_paths.setWordWrap(True)
         b7.addWidget(self.lbl_paths)
+        self.lbl_split = label("", "Danger", wrap=True)
+        self.lbl_split.setVisible(False)
+        b7.addWidget(self.lbl_split)
         row7 = QHBoxLayout()
         row7.setSpacing(8)
         self.btn_open_data = QPushButton("打开数据目录")
@@ -2723,24 +3210,36 @@ class SettingsPage(ThemedMixin, QWidget):
             pass
 
     def refresh_paths(self) -> None:
-        """把"配置/密码本/日志实际在哪"记到隐藏标签 + 两个按钮的 tooltip 上。
+        """把"配置/密码本/日志实际在哪"显示出来，并挂到两个按钮的 tooltip 上。
 
-        界面上**不再铺这段文字**（用户明确要求删掉）；但位置信息还是得有个去处：
-        tooltip 里能看到，测试也能断言。打包成便携版后放在 `C:\\Program Files\\` 下
-        会退到 `%APPDATA%`，悬停这两个按钮就能看出来。
+        ★ 2026-09-23（`B-2026-058`）：这段文字**重新变成可见的**（原来只有 tooltip 与测试
+        能看见）。理由：数据目录的判定会在**两次运行之间翻转**，而"当前用哪个目录"是
+        用户判断"我的密码本是不是丢了"的唯一依据 —— 藏起来等于让他自己猜。
+        文字只留**事实**（目录 + 两个文件名），不再是当初被要求删掉的那一大段说明。
         """
         if not hasattr(self, "lbl_paths"):
             return
         where = paths_mod.data_dir_note()
         data = paths_mod.data_dir()
         self.lbl_paths.setText(
-            f"{where}：{data}\n"
-            f"配置 {os.path.basename(paths_mod.data_path('config.json'))} · "
-            f"密码本 {os.path.basename(paths_mod.data_path('密码本.txt'))} · "
-            f"日志 logs\\ui.log"
+            f"数据目录：{data}\n"
+            # f"{where}\n"
+            # f"配置 {os.path.basename(paths_mod.data_path('config.json'))} · "
+            # f"密码本 {os.path.basename(paths_mod.data_path('密码本.txt'))} · "
+            # f"日志 logs\\ui.log"
         )
         self.btn_open_data.setToolTip(f"{where}\n{data}")
         self.btn_open_log.setToolTip(paths_mod.log_path())
+
+    def set_data_warning(self, text: str) -> None:
+        """两本密码本并存时把话说清楚（`B-2026-058`）；没有分裂就传空串、一个字都不显示。
+
+        裁决 `J-9 = A`：**只提示**，不自动合并、不做引导合并、不删任何一份。
+        """
+        if not hasattr(self, "lbl_split"):
+            return
+        self.lbl_split.setText(text)
+        self.lbl_split.setVisible(bool(text))
 
     def _repaint_marks(self) -> None:
         for name in self.path_marks:
@@ -2808,7 +3307,7 @@ class SettingsPage(ThemedMixin, QWidget):
         # 用户明确说了不要把这类说明文字堆在设置页上。
         if hasattr(self, "zip_note"):
             if not seven_zip:
-                self.zip_note.setText("没找到 7-Zip：确认软件目录下的 tools\\7z 还在")
+                self.zip_note.setText("未找到 7-Zip：请确认程序目录中的 tools\\7z 文件夹仍然存在")
                 self.zip_note.setStyleSheet(f"color:{self.theme.color('err')};")
                 self.zip_note.setVisible(True)
             elif bundled:
@@ -2825,6 +3324,14 @@ class SettingsPage(ThemedMixin, QWidget):
         self.sp_depth.setValue(int(cfg.max_depth))
         self.sp_timeout.setValue(int(cfg.timeout_min))
         self.sp_free.setValue(float(cfg.min_free_gb))
+        # 并行路数：0 / 超出本机范围的旧值 → 落到"最大那档"（`pick_workers` 还会再夹一次）
+        want = int(getattr(cfg, "workers", 0) or 0)
+        idx = self.cmb_workers.count() - 1
+        if want > 0:
+            for i in range(self.cmb_workers.count()):
+                if int(self.cmb_workers.itemData(i)) <= want:
+                    idx = i
+        self.cmb_workers.setCurrentIndex(idx)
         for key, cb in self.checkboxes.items():
             cb.setChecked(bool(getattr(cfg, key)))
         for rb, name in zip(self.theme_radios, ("dark", "light", "system")):
@@ -2845,6 +3352,7 @@ class SettingsPage(ThemedMixin, QWidget):
         cfg.max_depth = int(self.sp_depth.value())
         cfg.timeout_min = float(self.sp_timeout.value())
         cfg.min_free_gb = float(self.sp_free.value())
+        cfg.workers = int(self.cmb_workers.currentData() or 0)
         # 排除名单：逗号/空格/分号都当分隔符（用户怎么顺手怎么填），统一存小写不带点
         raw = self.ed_exclude.text().replace(",", " ").replace("，", " ").replace(";", " ")
         cfg.exclude_exts = sorted(probe.norm_exts(raw.split()))
@@ -2873,6 +3381,12 @@ class SettingsPage(ThemedMixin, QWidget):
 
 
 class Workbench(QWidget):
+    # 最小尺寸：宽度是"「清单操作」收成纯图标后还放得下"的那个值；
+    # 高度不写死——构造完页面之后**问布局要**（见 __init__ 里那段），
+    # 这里的两个常量只当保底与上限用。
+    WIN_MIN_W = 720
+    WIN_MIN_H = 620            # 保底：屏幕可用高度比内容需求还矮时用它
+
     def __init__(
         self,
         base_dir: str | None = None,
@@ -2905,10 +3419,8 @@ class Workbench(QWidget):
                         max(620, min(900, int(avail.height() * 0.92))))
         else:
             self.resize(800, 900)
-        # 最小尺寸两个方向都要给：只给宽度的话，把高度拖小会让上下两块挤在一起
-        # （用户报的"元素重叠"）。这个高度的算法：顶栏 48 + 计数卡 72 + 列表(最小) 120
-        # + 输出行 50 + 操作行 56 + 日志 170 + 进度 36 + 间距/边距 ≈ 620。
-        self.setMinimumSize(720, 620)
+        # ★ 最小尺寸在**页面造好之后**才算（见下面 setMinimumSize 那段）：
+        #   这里只把屏幕可用高度留着，别急着写死 720×620。
         self.setAcceptDrops(True)
         self.launch_paths = list(launch_paths or [])
         self.launch_auto = bool(launch_auto)
@@ -2945,6 +3457,8 @@ class Workbench(QWidget):
         self._auto_pending = False
         # 用户点过「停止」：这一批结束后不要再自动接着跑队列
         self._stop_requested = False
+        # 关窗流程正在跑（等任务收工）：防止 closeEvent 被重入（B-2026-022）
+        self._closing = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
@@ -2959,6 +3473,20 @@ class Workbench(QWidget):
 
         for p in (self.main_page, self.library_page, self.settings_page):
             self.stack.addWidget(p)
+
+        # ★ 最小尺寸 = **布局真正需要的高度**，不再手算常数。
+        #   以前写死 720×620：620 是按"各块高度加起来"估的，但算漏了日志卡的头部与
+        #   窗口那 6 个 12px 间距（实测要 ≈740）。窗口于是能被拖到比内容还矮——
+        #   列表区（list_stack）只剩 111px，拖拽引导里的图标/标题/按钮叠在一起
+        #   （用户报的"表格区域最小高度失效 / 文字重叠"）。
+        #   现在下限由两页自己出（表格 TABLE_MIN_H、拖拽引导自己的 minimumSizeHint），
+        #   这里只负责把布局的需求取上来；屏幕实在放不下时以屏幕可用高度为上限
+        #   （那才不会摆到屏幕外面），此时宁可把列表压低也不让元素互相重叠。
+        need_h = self.main_page.minimumSizeHint().height() + 32     # 根布局上下各 16
+        min_h = max(self.WIN_MIN_H, need_h)
+        if avail is not None:
+            min_h = min(min_h, avail.height())
+        self.setMinimumSize(self.WIN_MIN_W, min_h)
 
         self.main_page.sig_open_library.connect(self._open_library)
         self.main_page.sig_open_settings.connect(self._open_settings)
@@ -2981,7 +3509,26 @@ class Workbench(QWidget):
         self.settings_page.sig_shell_remove.connect(self._on_shell_remove)
         self.library_page.set_vault(self.vault)
         self.settings_page.load_config(self.config)
-        self.main_page._exclude_exts = list(self.config.exclude_exts or [])
+        # ★ B-2026-058：数据目录的判定**只会在两次运行之间翻转**（真写探针 + 进程内只判一次），
+        #   所以在启动时对一次账 —— 另一个候选目录里是不是也躺着一本密码本？
+        #   有就把"当前以哪份为准、另一份在哪"明说出来（裁决 J-9=A：只提示，不合并、不迁移、
+        #   不删任何一份）。**这是用户唯一能看出"密码本没丢、只是换了一本"的入口。**
+        self.data_split = paths_mod.data_dir_split()
+        if self.data_split.split:
+            self.library_page.set_data_warning(self.data_split.message())
+            self.settings_page.set_data_warning(self.data_split.message())
+            self.main_page.append_log(
+                "数据目录",
+                "另一个目录里也有一本密码本：" +
+                "、".join(f"{d}（{'读不了' if n < 0 else str(n) + ' 条'}）"
+                          for d, n in self.data_split.others) +
+                f"；当前以 {self.data_split.current} 为准，不会自动合并、也不会删任何一本",
+                "warn",
+            )
+        # ★ 「不处理的文件类型」的唯一来源是 config（`B-2026-100`）：给主界面一个
+        #   **取值函数**，别再拷副本 —— 副本会停在启动那一刻，而设置页保存
+        #   （`_on_save_config`）只更新 config，于是扫描与运行各信一份名单。
+        self.main_page.exclude_exts_source = lambda: list(self.config.exclude_exts or [])
         self.main_page.load_output(
             self.config.output_mode, self.config.output_dir, self.config.conflict
         )
@@ -3369,9 +3916,9 @@ class Workbench(QWidget):
                         wake_only = False
                     if not self.queue_launch_from_payload(payload) and not wake_only:
                         self.main_page.append_log(
-                            "右键菜单", "这条转发消息没解析出可用路径（已忽略）", "warn")
+                            "右键菜单", "收到的消息中没有可用的文件（已忽略）", "warn")
                 else:
-                    self.main_page.append_log("右键菜单", "收到了一条空的转发消息（已忽略）", "warn")
+                    self.main_page.append_log("右键菜单", "收到了一条空消息（已忽略）", "warn")
             except Exception as exc:      # noqa: BLE001 - 槽里抛出去 = 用户眼里"点了没反应"
                 self.main_page.append_log("错误", f"处理转发消息失败：{exc}", "err")
             finally:
@@ -3412,7 +3959,7 @@ class Workbench(QWidget):
         if missing:
             self.main_page.append_log(
                 "右键菜单",
-                "这些路径不存在，没法加进清单：" + "、".join(missing[:3])
+                "这些文件不存在，无法加入列表：" + "、".join(missing[:3])
                 + ("…" if len(missing) > 3 else ""),
                 "warn",
             )
@@ -3448,7 +3995,7 @@ class Workbench(QWidget):
             return
         if self.worker is not None:
             self.main_page.append_log(
-                "系统", "上一批还在跑：新加的已进清单，等这批结束再点「开始」", "warn")
+                "系统", "上一批仍在执行：新加入的项目已排进列表", "warn")
             return
         self._auto_pending = True
         self._maybe_auto_start()
@@ -3595,7 +4142,7 @@ class Workbench(QWidget):
                 "text_dim",
             )
         self.main_page.append_log(
-            "设置", "配置已保存" if ok else "配置保存失败（磁盘只读？）", "ok" if ok else "err"
+            "设置", "配置已保存" if ok else "配置保存失败", "ok" if ok else "err"
         )
 
     # ------------------------------------------------------------------
@@ -3631,18 +4178,27 @@ class Workbench(QWidget):
             return
 
         # 界面上的"解压到"就是这次的输出设置（放在最外层就是为了所见即所用）
+        mode, out_dir, conflict = self.main_page.output_values()
+        # ★ `B-2026-024`：选了「指定目录」却没填路径 —— **拒绝开始**，不再静默改按原目录解压。
+        #   以前只写一行 warn 就把 `output_mode` 悄悄改成 `same`：界面仍显示「指定目录」被选中、
+        #   输入框仍空着，文件却散落到压缩包旁边（桌面 / 下载文件夹），用户只能事后去日志里找
+        #   （而日志区默认只显示约 7 行）。这里在**写进 config 之前**拦下，选择保持原样。
+        if mode == "custom" and not out_dir:
+            self.main_page.append_log(
+                "错误",
+                "未填写输出文件夹，无法开始。请选择输出文件夹，或改回「与原文件同目录」",
+                "err",
+            )
+            return
         self.config.output_mode, self.config.output_dir, self.config.conflict = (
-            self.main_page.output_values()
+            mode, out_dir, conflict
         )
-        if self.config.output_mode == "custom" and not self.config.output_dir:
-            self.main_page.append_log("系统", "选了「指定目录」但没填路径，改按原文件同目录", "warn")
-            self.config.output_mode = "same"
 
         self.vault.reload()
         self.main_page.set_log_badge("准备中")
         where = (self.config.output_dir if self.config.output_mode == "custom" else "原文件同目录")
         self.main_page.append_log(
-            "系统", f"开始：{len(items)} 个任务 · 最多 {self.config.max_depth} 层 · 解压到 {where}", "info"
+            "系统", f"开始：{len(items)} 个任务 · 最多 {self.config.max_depth} 层 · 输出到 {where}", "info"
         )
         self.run_started = time.monotonic()
         self.main_page.overall.setValue(0)
@@ -3673,10 +4229,10 @@ class Workbench(QWidget):
             self.main_page.set_paused(True)  # 文案/可用性/计时器一起摆正（互斥也在这里）
             self.main_page.set_log_badge("已暂停")
             self.main_page.append_log(
-                "系统", "已暂停（正在跑的引擎已挂起，点「继续」接着跑）", "warn")
+                "系统", "已暂停", "warn")
         except Exception as exc:             # noqa: BLE001
             # 信号槽里抛异常在打包版里是静默的（没有控制台），用户只会看到"点了没反应"
-            self.main_page.append_log("错误", f"暂停失败：{exc!r}", "err")
+            self.main_page.append_log("错误", f"暂停失败：{exc}", "err")
 
     def _start_clicked(self) -> None:
         """「开始 / 继续」：跑着的时候它是「继续」，没跑的时候是「开始」。
@@ -3700,7 +4256,7 @@ class Workbench(QWidget):
                 return
             self._on_start()
         except Exception as exc:             # noqa: BLE001
-            self.main_page.append_log("错误", f"开始/继续失败：{exc!r}", "err")
+            self.main_page.append_log("错误", f"开始/继续失败：{exc}", "err")
 
     def _on_pause(self) -> None:
         """兼容旧入口（有测试/脚本直接调它）：等价于点一下「暂停」。"""
@@ -3712,17 +4268,111 @@ class Workbench(QWidget):
         self._stop_requested = True        # 停过之后不要再自动接着跑
         self.worker.request_stop()
         self.main_page.set_paused(False)
-        self.main_page.append_log("系统", "已停止（正在运行的引擎已掐断）", "err")
+        self.main_page.append_log("系统", "已停止", "err")
         self.main_page.set_log_badge("已停止")
         self.main_page.btn_stop.setEnabled(False)
         self.main_page.btn_pause.setEnabled(False)
 
+    # ------------------------------------------------------------------
+    # 关窗：后果必须说清楚（B-2026-022）
+    # ------------------------------------------------------------------
+
+    def _build_close_box(self) -> "tuple[QMessageBox, QPushButton, QPushButton]":
+        """建出"还有任务在跑"的确认框（**不 `exec()`**）→ `(框, 停止按钮, 取消按钮)`。
+
+        单独抽出来是为了**能被断言**：文案与按钮是给用户看的后果说明，靠真点对话框测不了。
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("还有解压任务进行中")
+        box.setText("还有解压任务进行中")
+        box.setInformativeText(
+            "窗口关掉之后，正在跑的 7z 也会被一起停掉（已经解出来的产物会保留）。\n"
+            "不想中断的话点「取消」，任务会继续在窗口里跑。"
+        )
+        stop_btn = box.addButton("停止所有任务并退出",
+                                 QMessageBox.ButtonRole.DestructiveRole)
+        cancel_btn = box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        # ★ 默认选**安全**的那个：不关窗、不掐断任务（回车误触不会杀掉跑了一半的解压）
+        box.setDefaultButton(cancel_btn)
+        box.setEscapeButton(cancel_btn)
+        return box, stop_btn, cancel_btn
+
+    def _ask_close_while_running(self) -> bool:
+        """任务在跑时问一句 → `True` = 停止所有任务并退出，`False` = 取消关闭。"""
+        box, stop_btn, _cancel_btn = self._build_close_box()
+        box.exec()
+        return box.clickedButton() is stop_btn
+
+    def closeEvent(self, event) -> None:               # noqa: N802 - Qt 的命名
+        """关窗时的**后果**要说清楚，而且关掉之后**不许留下看不见的写盘进程**。
+
+        真事（`B-2026-022`）：任务运行中点右上角 × → 窗口立刻消失、没有任何确认、
+        主进程退出，而 **7z 子进程还在往输出目录写**。用户以为"关了就是取消了"，
+        此时去删产物目录 / 搬走源文件 / 再跑一次，都会和那个**看不见的进程**打架。
+
+        两条硬性质：
+          * 有任务在跑 → 先问一句，**默认选安全的那项**（取消关闭）；
+          * 选了「停止所有任务并退出」→ **等线程真的收工**才放行（引擎那边是
+            `proc.kill()`，正常毫秒级）；等不到就**不关窗**并说明原因 ——
+            宁可让用户等一下，也不留一个看不见的 7z 在写盘。
+        """
+        if self._closing:
+            # 等线程收工期间用户又点了一次 ×：别重入（外面那次正在处理），直接放行
+            event.accept()
+            return
+        if self.worker is None or not self.worker.isRunning():
+            event.accept()
+            return
+        if not self._ask_close_while_running():
+            self.main_page.append_log("系统", "已取消关闭，任务继续", "info")
+            event.ignore()
+            return
+
+        self._closing = True
+        try:
+            self.main_page.append_log("系统", "正在停止所有任务…", "warn")
+            self._on_stop()
+            deadline = time.monotonic() + CLOSE_STOP_TIMEOUT_SECONDS
+            while time.monotonic() < deadline:
+                w = self.worker
+                if w is None:
+                    break
+                # 让界面还活着：日志能刷出来，用户看得见"正在停止"
+                QApplication.processEvents()
+                w = self.worker                    # processEvents 可能把它清成 None
+                if w is None or not w.isRunning():
+                    break
+                w.wait(50)
+            if self.worker is not None and self.worker.isRunning():
+                # 判据是"**还有线程在跑**"，不是"`self.worker` 还没被清掉"：
+                # 线程收工与 `_on_run_done` 把它清成 None 之间有个时间差，
+                # 拿后者当判据会误报"没停下来"（那只是一个已经收工的线程对象）。
+                self.main_page.append_log(
+                    "错误",
+                    f"任务在 {CLOSE_STOP_TIMEOUT_SECONDS:.0f} 秒内没有停下来，窗口先不关 ——"
+                    " 请稍候再试（避免留下看不见的引擎进程在写盘）",
+                    "err",
+                )
+                event.ignore()
+                return
+            event.accept()
+        finally:
+            self._closing = False
+
     def _on_log(self, message: str) -> None:
-        """工作线程的日志：写进面板，顺便把右上角徽标更新成当前层号。"""
+        """工作线程的日志：只写进面板。
+
+        以前这里顺手 `re.search(r"第(\\d+)层", message)` 把右上角徽标更新成
+        "最近一条日志的当前层号"——那是**第二个层号来源**：同层有多个包时，
+        后一条日志的层号可能比前一条小，徽标就回退，与状态列对不上。
+        徽标现在由 `MainPage.update_item` 从任务对象上取（见那里），
+        日志这条通道只管显示。
+
+        ⚠ 日志里 `[第N层]` 的空格格式被 `smoke_core.py` 的断言钉着；
+        它现在是纯展示，改它不会再影响徽标，但**别顺手改**。
+        """
         self.main_page.log_line(message)
-        m = re.search(r"第(\d+)层", message)
-        if m:
-            self.main_page.set_log_badge(f"第 {m.group(1)} 层 · 穿透中")
 
     def _on_debug(self, message: str) -> None:
         """引擎的**细节**日志（命令行、每次密码尝试、心跳）。
@@ -3771,7 +4421,7 @@ class Workbench(QWidget):
                   if t.runnable and t.status is ItemStatus.QUEUED]
         if not queued:
             return False
-        self.main_page.append_log("系统", f"清单里还有 {len(queued)} 项没轮到，接着跑", "info")
+        self.main_page.append_log("系统", f"清单里还有 {len(queued)} 项待处理，继续执行", "info")
         self._auto_pending = False        # 这个批次本身就包含了它们
         self._on_start()
         return True
@@ -3780,7 +4430,11 @@ class Workbench(QWidget):
     def _refresh_overall(self, items: list[Task]) -> None:
         leaves = [i for i in items if i.runnable]
         total = len(leaves) or 1
-        done = sum(1 for i in leaves if i.status in (Status.DONE, Status.FAILED, Status.SKIPPED))
+        # ⚠ 必须含 `PARTIAL`：它也是"跑完了"，漏掉的话总进度**永远到不了 100%**
+        #   （界面上会一直卡在 99% 之类的数字）。判据走 `settled()` ——
+        #   与运行中的 `_update_overall` 是**同一个来源**，两处不许再各写一份元组
+        #   （以前运行中那份漏了 `PARTIAL`，最终值恰好对，所以一直没被发现）。
+        done = sum(1 for i in leaves if settled(i.status))
         pct = int(done / total * 100)
         self.main_page.overall.setValue(pct)
         self.main_page.overall_text.setText(f"{pct}%")
@@ -3804,7 +4458,7 @@ class Workbench(QWidget):
         """
         if os.environ.get("SMART_UNZIP_NO_PROMPT") == "1":
             self.main_page.append_log(
-                "需要密码", f"{os.path.basename(req.archive)}：无头模式，自动跳过", "warn"
+                "需要密码", f"{os.path.basename(req.archive)}：未开启密码询问，已自动跳过", "warn"
             )
             if self.worker is not None:
                 self.worker.answer_password(None)
@@ -3832,7 +4486,7 @@ class Workbench(QWidget):
             dlg.exec()
             password = dlg.accepted_password
         except Exception as exc:
-            self.main_page.append_log("错误", f"密码弹窗打不开：{exc!r}", "err")
+            self.main_page.append_log("错误", f"密码弹窗打不开：{exc}", "err")
         finally:
             self.pending_ask = None
 
@@ -3875,14 +4529,21 @@ def _install_crash_log() -> str:
     import traceback
 
     target = paths_mod.log_path()
-    try:
-        fh = open(target, "a", encoding="utf-8", buffering=1)
-    except OSError:
+    # ★ 换成 `RunLog`（2026-09-24，`TASK-060`）：以前这里是纯 `open(target, "a")`，
+    #   而下面那个 `_Tee` 会把**全部** stdout/stderr 镜像进来（含 `pipeline` 里整段 traceback）
+    #   —— `ui.log` 于是无上限增长，一台机器上跑几个月就是几百 MB。
+    #   现在与 `run.log` 同一套轮转：2MB 上限、留一份旧的（`ui.log` / `ui.log.1`）。
+    log = RunLog(target, max_bytes=2 * 1024 * 1024, keep=1)
+    if not log.is_open:
         return ""
 
-    fh.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 启动 "
-             f"v{APP_VERSION} {'' if paths_mod.is_frozen() else '(源码)'} "
-             f"argv={sys.argv[1:]!r} =====\n")
+    # 日志头带上**构建指纹**（2026-09-24，`TASK-060`）：只有版本号时，"v1.1.0" 对应的是
+    # 哪一份代码说不清 —— 而用户交回来的 `ui.log` 正是排错的第一份材料（§9.10）。
+    _build = paths_mod.build_id()
+    log.chunk(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 启动 "
+              f"v{APP_VERSION} {'' if paths_mod.is_frozen() else '(源码)'} "
+              + (f"构建={_build} " if _build else "")
+              + f"argv={sys.argv[1:]!r} =====\n")
 
     class _Tee(io.TextIOBase):
         def __init__(self, mirror) -> None:
@@ -3890,7 +4551,7 @@ def _install_crash_log() -> str:
 
         def write(self, s: str) -> int:          # type: ignore[override]
             try:
-                fh.write(s)
+                log.chunk(s)                     # 走同一个 RunLog：轮转 / 打不开都在它里面
             except Exception:                    # noqa: BLE001
                 pass
             try:
@@ -3902,7 +4563,7 @@ def _install_crash_log() -> str:
 
         def flush(self) -> None:
             try:
-                fh.flush()
+                log.flush()
             except Exception:                    # noqa: BLE001
                 pass
 
@@ -3910,7 +4571,7 @@ def _install_crash_log() -> str:
     sys.stdout = _Tee(sys.__stdout__)
 
     def hook(exc_type, exc, tb) -> None:
-        fh.write("".join(traceback.format_exception(exc_type, exc, tb)))
+        log.chunk("".join(traceback.format_exception(exc_type, exc, tb)))
 
     sys.excepthook = hook
     try:

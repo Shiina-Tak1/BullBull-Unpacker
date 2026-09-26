@@ -34,9 +34,9 @@ from core import paths
 
 VERB = appinfo.SHELL_VERB
 MENU_TEXT = appinfo.SHELL_MENU_TEXT
-# 以前叫「用智能解压解压」（VERB=SmartUnzip）：安装/卸载时顺手把老键清掉，
-# 不然菜单里会并排出现两条一模一样的项
-LEGACY_VERBS = ("SmartUnzip",)
+# 以前叫「用智能解压解压」（VERB=SmartUnzip）、后来是 BBUUnpack：安装/卸载时顺手把老键清掉，
+# 不然菜单里会并排出现两条一模一样的项。**再改 VERB 记得往这里补一条。**
+LEGACY_VERBS = ("SmartUnzip", "BBUUnpack")
 ROOT = r"Software\Classes"
 # 右键选中多个文件时，资源管理器最多给这么多个副本发命令（默认只发第一个）
 MULTI_SELECT = "Player"
@@ -66,8 +66,11 @@ def _key(root: str, place: str, verb: str = VERB) -> str:
 def command_line(pythonw: str, script: str, *, placeholder: str = "%1") -> str:
     """拼一条能被资源管理器当命令行执行的字符串（路径全加引号，防空格）。
 
-    不带 `--auto`：右键只把路径送进待处理列表，不自动开始。
+    `script` 为空 = 直接执行 exe（冻结版就是这种）。不带 `--auto`：
+    右键只把路径送进待处理列表，不自动开始。
     """
+    if not script:
+        return f'"{pythonw}" "{placeholder}"'
     return f'"{pythonw}" "{script}" "{placeholder}"'
 
 
@@ -109,17 +112,6 @@ def menu_icon() -> str:
         return os.path.abspath(sys.executable) + ",0"
     ico = paths.resource_path("assets", appinfo.ICON_FILE)
     return ico if os.path.isfile(ico) else ""
-
-
-def command_line(pythonw: str, script: str, *, placeholder: str = "%1") -> str:
-    """拼一条能被资源管理器当命令行执行的字符串（路径全加引号，防空格）。
-
-    `script` 为空 = 直接执行 exe（冻结版就是这种）。不带 `--auto`：
-    右键只把路径送进待处理列表，不自动开始。
-    """
-    if not script:
-        return f'"{pythonw}" "{placeholder}"'
-    return f'"{pythonw}" "{script}" "{placeholder}"'
 
 
 def exe_command(placeholder: str = "%1") -> str:
@@ -172,11 +164,21 @@ def install(
 
 
 def purge_legacy(*, root: str = ROOT) -> list[str]:
-    """删掉旧菜单项（改名前的那些 VERB）。返回真正删掉的键。"""
+    """删掉旧菜单项（改名前的那些 VERB）。返回真正删掉的键。
+
+    **改名时必须往 `LEGACY_VERBS` 里补一条**，否则老版本注册过的那条会留在用户机器上，
+    菜单里就会出现两条一模一样的「添加到BBU解压列表」（用户只会觉得软件坏了）。
+    （2026-09-20：verb 从 `BBUUnpack` 改成 `BBUnpacker`，就是把旧名字补进这个表的场景。）
+
+    这里还加了一道防呆：**旧名字等于当前名字时跳过** —— 否则万一改名被回退，
+    `purge_legacy` 会把当前正在用的那条删掉。
+    """
     import winreg
 
     removed: list[str] = []
     for verb in LEGACY_VERBS:
+        if verb == VERB:
+            continue
         for place, _ in PLACES:
             key_path = _key(root, place, verb)
             if _delete_tree(winreg, winreg.HKEY_CURRENT_USER, key_path):

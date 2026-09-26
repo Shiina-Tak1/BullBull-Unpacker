@@ -1,0 +1,25 @@
+# BullBull Unpacker —— **打包/发布**用的依赖（普通用户不需要这一份）。
+#
+# 为什么和 requirements.txt 分开（2026-09-24）：`requirements.txt` 会被 sync_repo.py 拷进
+# 公开仓（改名 docs/REQUIREMENTS.txt）当**运行依赖**发布；里面混进 PyInstaller / pefile /
+# setuptools 这些打包工具，等于告诉每个下载的人"从源码跑这个程序需要 PyInstaller"——
+# 那不是真的：它们在本项目的源码里 **import 次数为 0**，只有打包时才用得上。
+#
+# 用法（打包机上，src\ 下）：
+#     .venv\Scripts\python -m pip install -r requirements-build.txt
+# 它会先装 `-r requirements.txt`（PySide6 那四个），再装下面这些。
+#
+# ⚠ 公开仓里这两份叫 `docs\REQUIREMENTS.txt` 与 `docs\REQUIREMENTS-BUILD.txt`（sync_repo.py
+#   会改名）：Windows 大小写不敏感，下面那行 `-r` 照样命中；要在 Linux 上克隆打包，请把
+#   两个文件名统一成同一种大小写。
+#
+# 编码：本文件是 **UTF-8 无 BOM**，别用 PowerShell 5.1 的 `>` / `Set-Content -Encoding utf8`
+# 去覆盖它（那会写成 UTF-16LE 或带 BOM，见手册 §16.9 与 tools\check_encoding.py）。
+-r requirements.txt
+altgraph==0.17.5
+packaging==26.3
+pefile==2024.8.26
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
+pywin32-ctypes==0.2.3
+setuptools==84.0.0

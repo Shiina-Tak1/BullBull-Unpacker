@@ -9,12 +9,13 @@ from __future__ import annotations
 
 APP_NAME = "BullBull Unpacker"
 # exe/任务栏用的版本号（打包时写进版本资源；界面显示也用它）
-VERSION = "1.0.0"
+# 1.0.0 = 2026-09-15 已发布的那版；1.1.0 = 2026-09-20 这一批（见 doc\CHANGELOG.md）
+VERSION = "1.1.0"
 # 图标文件名（在 assets/ 下；换图标要重跑 tools/make_icon.py）
 ICON_FILE = "bbu.ico"
 # 任务栏/AppUserModelID 用；保持稳定，别随便改（改了任务栏图标会重新分组）
 APP_ID = "BullBull.Unpacker.1"
 # 右键菜单的 verb 名（注册表键名）
-SHELL_VERB = "BBUUnpack"
+SHELL_VERB = "BBUnpacker"
 # 右键菜单文案
-SHELL_MENU_TEXT = "添加到BBU解压列表"
+SHELL_MENU_TEXT = "添加到 BBU 解压列表"

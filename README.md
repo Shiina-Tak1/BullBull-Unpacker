@@ -35,7 +35,7 @@
 4. **弹窗询问** — 以上均未命中时，由用户手动输入
 
 密码只有在**实际解压成功后**才会写入密码本，避免误记。
-对于未加密的压缩包，会预先判定并跳过整个密码库，避免产生虚假命中记录。
+对于未加密的压缩包，会预先判定并跳过整个密码本，避免产生虚假命中记录。
 密码本为纯文本文件，格式为 `密码<TAB>成功次数`，一行一条，可直接编辑。
 
 ## 隐私说明
@@ -52,6 +52,26 @@
 - **WinRAR** — 用于解压加密的 RAR5 文件，需用户自行安装并确保已获得合法授权，本项目不包含、分发和修改其任何组件
 
 详见 [`THIRD-PARTY.md`](docs/THIRD-PARTY.md)
+
+## 从源码运行与构建
+
+需要 **Windows + Python 3.14**。
+
+```powershell
+git clone https://github.com/Shiina-Tak1/BullBull-Unpacker.git
+cd BullBull-Unpacker
+python -m venv .venv
+.venv\Scripts\python -m pip install -r docs\REQUIREMENTS.txt
+.venv\Scripts\python run.py
+```
+
+构建 Windows 便携版：
+
+```powershell
+.venv\Scripts\python -m pip install -r docs\REQUIREMENTS-BUILD.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File build\build_portable.ps1
+```
+
 
 ## AI生成内容说明
 本项目的绝大部分设计、代码、文档和测试用例均由 DeepSeek 生成  
