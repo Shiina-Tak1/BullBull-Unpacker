@@ -1,0 +1,133 @@
+# BullBull Unpacker —— 发布构建工作流
+#
+# 职责：在 GitHub 托管的 runner 上构建便携版、把产物作为 workflow artifact 上传，并预留
+# 代码签名的接线（默认关闭，见文末）。构建与打包本身由 build\build_portable.ps1 完成，
+# 本文件只负责调用与上传。
+#
+# 为什么发布产物要在这里构建、而不是在本地：产物应当由本仓 CI 从对应提交构建，来源可核对。
+# 若启用签名，签名服务还要求产物先作为 workflow artifact 存在于 GitHub 上，且签名请求之前
+# 的所有 job 都跑在 GitHub 托管的 runner 上（自托管会被拒）。
+# 依据：https://docs.signpath.io/trusted-build-systems/github
+#
+# 产物：release\BullBullUnpacker-<版本>-portable.zip（版本号由 core\appinfo.py 提供，
+# 构建脚本自行读取，本文件不写死）。同名 .sha256 只是本地产物、不上传——签名会改写 zip，
+# 校验值必须在签名之后重算。
+#
+# tag 命名约定：数字开头（1.0.0、1.1.0……）。签名一旦启用，**任何**匹配的 tag 推送都会
+# 自动提交签名请求，所以不要把试验性 tag 推到本仓。
+
+name: build
+
+on:
+  push:
+    tags:
+      - '[0-9]*'             # 与现有 tag（1.0.0 / 1.1.0）一致的数字开头命名
+  workflow_dispatch:         # 手动触发：验证工作流本身
+    inputs:
+      sign:
+        description: 同时在这次运行里提交签名请求
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read              # 签名 action 要读 workflow artifact
+
+jobs:
+  portable:
+    runs-on: windows-latest  # 签名服务要求 GitHub 托管 runner，不要改成自托管
+    timeout-minutes: 60      # 装 PySide6 全家桶 + PyInstaller 冻结 + 压缩，45 分钟偏紧
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: python -m pip install -r docs\REQUIREMENTS-BUILD.txt
+
+      # 构建脚本必须带 UTF-8 BOM：Windows PowerShell 5.1 只靠 BOM 判定 UTF-8，
+      # 丢了就按 GBK 读中文注释、报一串 ParserError。同步与编辑工具会吃掉 BOM，
+      # 所以先按字节断言，免得失败信息看起来像语法错误。
+      - name: Assert build script keeps its BOM
+        shell: pwsh
+        run: |
+          $bytes = [System.IO.File]::ReadAllBytes("build\build_portable.ps1")
+          if ($bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
+            throw "build\build_portable.ps1 丢了 UTF-8 BOM（前三个字节应为 EF BB BF）"
+          }
+
+      # -SkipVerify：跳过该脚本的第 5 步（对着 exe 跑验收）。验收脚本
+      # tools\verify_portable.py 是开发工具、不随仓库发布，这里没有它。
+      - name: Build portable package
+        shell: powershell
+        run: .\build\build_portable.ps1 -SkipVerify
+
+      - name: List produced files
+        shell: pwsh
+        run: Get-ChildItem release -Recurse -File | Select-Object FullName, Length
+
+      # archive: false —— 产物本身就是 zip，不要再套一层，这样签名服务的
+      # Artifact Configuration 可以直接以 <zip-file> 为根元素。
+      # archive: false 要求 path 命中单个文件：CI 是全新 checkout（release\ 被
+      # .gitignore 挡住），只会有一个 zip；将来若复用工作区，先清空 release\。
+      - name: Upload unsigned artifact
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: BullBullUnpacker-portable-unsigned
+          path: release/BullBullUnpacker-*-portable.zip
+          archive: false
+
+      # ---- 签名（默认关闭）----------------------------------------------------
+      # 在仓库 Settings 里配好下面这些变量与密钥之后，这一段就会执行，不必改本文件的结构。
+      #   1. 本仓 Settings → Secrets and variables → Actions
+      #        Variables 新增：SIGNPATH_ENABLED = true
+      #        Secrets   新增：SIGNPATH_API_TOKEN、SIGNPATH_ORGANIZATION_ID
+      #   2. 在签名服务后台建 project，让下面三个 slug 与实际配置一致：
+      #        project-slug=bullbull-unpacker
+      #        signing-policy-slug=release-signing
+      #        artifact-configuration-slug=portable-zip
+      #   3. 安装对应服务的 GitHub App（组织级），供审计日志评估
+      # 注意 upload-artifact 的已知问题：同一次运行里出现同名文件会导致上传失败，
+      # 而签名产物与未签名产物的内部 zip 名相同；真撞上就给签名后的 zip 加后缀。
+      # ------------------------------------------------------------------------
+      - name: Submit signing request to SignPath
+        if: vars.SIGNPATH_ENABLED == 'true' && (github.event_name == 'push' || inputs.sign)
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: bullbull-unpacker
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: portable-zip
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          skip-decompress: true          # 对应 upload-artifact 的 archive: false
+          output-artifact-directory: signed
+
+      # 签名会改写 zip（内部 exe 被签名），所以校验值必须重算，
+      # 格式沿用发布时的 `<hash>  <文件名>`（ASCII）。
+      - name: Recompute checksum after signing
+        if: vars.SIGNPATH_ENABLED == 'true' && (github.event_name == 'push' || inputs.sign)
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem signed -Recurse -Filter *.zip | Select-Object -First 1
+          if (-not $zip) { throw "签名产物里没有 zip" }
+          $hash = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash
+          "$hash  $($zip.Name)" | Set-Content -LiteralPath "$($zip.FullName).sha256" -Encoding ASCII
+          Get-ChildItem signed -Recurse -File | Select-Object FullName, Length
+
+      # 发布仍由人工完成：取这里签名后的 zip 与 .sha256 上传到 GitHub Release，
+      # 发布说明里带上版本号与校验值。
+      - name: Upload signed artifact
+        if: vars.SIGNPATH_ENABLED == 'true' && (github.event_name == 'push' || inputs.sign)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BullBullUnpacker-portable-signed
+          path: signed/**

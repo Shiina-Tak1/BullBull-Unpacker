@@ -5,20 +5,22 @@
 
   BullBull Unpacker / 牛牛解压器是一个 Windows 上的嵌套压缩包解压工具
 
-  [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](https://github.com/)
+  [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](https://github.com/Shiina-Tak1/BullBull-Unpacker/releases)
   [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 </div>
 
+[English](README.en.md) | **简体中文**
+
 ## 功能特点
 
-- 支持 zip / 7z / rar / tar / lz4 / lz5 等格式
+- 支持 zip / 7z / rar / tar / lz4 / lz5 等格式（加密的 RAR 需另行安装 WinRAR）
 - 自动识别伪装成 mp4 等格式的压缩包并解压
-- 嵌套解压，自动清理中间文件，收平空壳目录
+- 嵌套解压，自动清理中间文件与解压后残留的空目录
 - 自动记忆解压密码，同时支持手动添加修改
 - 右键菜单集成，在资源管理器里一键加入解压列表
 - 便携免安装，解压到任意位置即可使用
 
- ## 截图
+## 截图
 
 <div align="center">
   <img src="shots/01-extracting.png" width="38%" alt="主界面">
@@ -26,11 +28,11 @@
   <img src="shots/03-context-menu.png" width="20%" alt="右键菜单">
 </div>
 
- ## 密码记忆
+## 密码记忆
 
 密码来源按固定顺序尝试，命中即止：
 1. **文件名中携带的密码** — 从文件名中提取，例如 `xxx_密码pwd.zip`
-2. **密码本** — 按成功次数降序尝试，命中次数越多越优先
+2. **密码本** — 按成功次数降序尝试
 3. **空密码** — 部分压缩包未加密或密码为空
 4. **弹窗询问** — 以上均未命中时，由用户手动输入
 
@@ -43,13 +45,15 @@
 - 本程序全程本地运行，不包含任何网络通信组件，不会上传和收集任何信息
 - 密码本为**明文存储**，未进行任何加密，请用户谨慎保管
 
+完整的隐私政策见 [`docs/PRIVACY.md`](docs/PRIVACY.md)。
+
 ## 第三方
 
 本项目使用或引用了以下第三方组件，在此致谢：
 
-- **7-Zip ZS** — 内置解压引擎，遵循 GNU LGPL 许可证，完整许可与文件清单见 `tools/7z/License.txt`
+- **7-Zip ZS** — 内置解压引擎，遵循 GNU LGPL 许可证，完整许可与文件清单见 [`tools/7z/License.txt`](tools/7z/License.txt)
 - **PySide6 / Qt6** — 界面框架，遵循 GNU LGPLv3 许可证
-- **WinRAR** — 用于解压加密的 RAR5 文件，需用户自行安装并确保已获得合法授权，本项目不包含、分发和修改其任何组件
+- **WinRAR** — 用于解压加密的 RAR / RAR5 压缩包，需用户自行安装并确保已获得合法授权，本项目不包含、分发和修改其任何组件
 
 详见 [`THIRD-PARTY.md`](docs/THIRD-PARTY.md)
 
@@ -72,10 +76,10 @@ python -m venv .venv
 powershell -NoProfile -ExecutionPolicy Bypass -File build\build_portable.ps1
 ```
 
+## AI 生成内容说明
 
-## AI生成内容说明
-本项目的绝大部分设计、代码、文档和测试用例均由 DeepSeek 生成  
-软件图标由 OpenAI GPT-Image 生成
+本项目的绝大部分设计、代码、文档和测试用例均由 DeepSeek 生成。
+软件图标由 OpenAI GPT-Image 生成。
 
 ## 许可证
 
