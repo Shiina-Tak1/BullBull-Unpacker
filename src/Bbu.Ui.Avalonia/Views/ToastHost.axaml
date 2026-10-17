@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:theme="using:Bbu.Ui.Avalonia.Theme"
+             x:Class="Bbu.Ui.Avalonia.Views.ToastHost"
+             HorizontalAlignment="Center"
+             VerticalAlignment="Bottom"
+             Margin="0,0,0,16">
+
+  <!-- 提示条只有一种形态：底 / 边 / 字三层颜色都走 DynamicResource，失败与警告只换 class。
+       命中在本控件里定：宿主与 ToastStack 都随内容收缩，尺寸即提示条尺寸，
+       所以层外的区域不会吞掉主界面的点击。
+       居中基准由外层的宽度决定，见 `MainWindow.axaml`。 -->
+  <UserControl.Styles>
+    <Style Selector="Border.toast">
+      <Setter Property="MaxWidth" Value="520"/>
+      <Setter Property="Padding" Value="12,8"/>
+      <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+      <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Opacity" Value="0"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.toast.bad">
+      <Setter Property="Background" Value="{DynamicResource Err}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Err}"/>
+    </Style>
+    <!-- 需要注意那一档：操作没失败，但结果与预期不同（例如已在清单里所以没加）。 -->
+    <Style Selector="Border.toast.warn">
+      <Setter Property="Background" Value="{DynamicResource WarnSoft}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Warn}"/>
+    </Style>
+    <Style Selector="Border.toast TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="FontSize" Value="{DynamicResource FsSmall}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="LineHeight" Value="18"/>
+    </Style>
+    <Style Selector="Border.toast.warn TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource Warn}"/>
+    </Style>
+    <Style Selector="Border.toast.bad TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource AccentInk}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <!-- 命中面只有提示条这一块：外层套一个透明 Border 承担命中，
+       再往下才是提示条。宿主随内容收缩，所以这一块就是提示条的尺寸，不会铺开挡住主界面。 -->
+  <Border Name="ToastFace" Background="Transparent">
+    <StackPanel Name="ToastStack" Spacing="8"/>
+  </Border>
+
+</UserControl>

@@ -1,0 +1,20 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Bbu.App.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Bbu.Ui.Avalonia/Theme/Tokens.axaml"/>
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme/>
+    <!-- 自己的样式表放在 FluentTheme **之后**：同权重选择器后者胜，四态才盖得住默认外观 -->
+    <StyleInclude Source="avares://Bbu.Ui.Avalonia/Theme/Controls.axaml"/>
+  </Application.Styles>
+
+</Application>

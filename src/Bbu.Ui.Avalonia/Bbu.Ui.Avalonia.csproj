@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Bbu.Ui.Avalonia</RootNamespace>
+    <AssemblyName>Bbu.Ui.Avalonia</AssemblyName>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <!-- 编译绑定：绑定路径在编译期解析；NativeAOT 下反射绑定不可用。-->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bbu.Core\Bbu.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 图标资源：窗口图标 bbu.ico 与品牌标识 bbu-logo.png（由 ico 的最大帧导出）。
+       窗口图标与 Bbu.App\Assets\bbu.ico 各存一份（UI 层不得引用入口层），
+       两份必须逐字节一致，由 的 WindowIcon_MustMatchTheExecutableIcon 盯着。 -->
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+</Project>

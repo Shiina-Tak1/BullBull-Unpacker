@@ -1,24 +1,24 @@
-# ---- 运行时/用户数据 ----
-密码本.txt
+# 构建产物
+bin/
+obj/
+dist/
+src/Bbu.ShellExt/**/x64/
+
+# IDE
+.idea/
+.vs/
+
+# 本机文件与一次性产物
+*.pfx
+.scratch/
+*.user
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 用户数据
 config.json
 logs/
-*.log
-
-# ---- 构建产物 ----
-# build/frozen 是冻结中转目录，进构建产物区
-build/frozen/
-build/pyi/
-build/version.txt
-build/*.toc
-*.spec
-*.pyc
-__pycache__/
-*.pyo
-
-# ---- 虚拟环境 / 工具缓存 ----
-.venv/
-.tmp/
-
-# ---- 构建产物 ----
-release/
-启动.vbs
+密码本*.txt
+userdata/

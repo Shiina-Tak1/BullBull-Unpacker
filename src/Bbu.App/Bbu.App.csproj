@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Bbu.App</RootNamespace>
+    <AssemblyName>Bbu.App</AssemblyName>
+    <!-- ★ 钉死 RID：不带 RID 发布会把全平台 native assets 打进去（解包 124.99 MB 对 23.54 MB） -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 图标：三处旧注册键的 Icon 取的就是 exe 里内嵌的这一份；
+-->
+    <ApplicationIcon>Assets\bbu.ico</ApplicationIcon>
+    <!-- 编译绑定：绑定路径在编译期解析；NativeAOT 下反射绑定不可用。-->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+    <PublishAot>false</PublishAot>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Diagnostics" Condition="'$(Configuration)' == 'Debug'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bbu.Ui.Avalonia\Bbu.Ui.Avalonia.csproj" />
+    <ProjectReference Include="..\Bbu.Core\Bbu.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 随包的引擎：两个引擎收在一个 engines\ 目录下，各自仍占一层子目录。
+       分层的理由：两份许可的文件名在 Windows 上大小写撞车（7z\License.txt 与 unrar\license.txt），
+       两份 SHA256SUMS 又完全同名 —— 平铺进一个目录必有一份要改名，而那是「与上游逐字节相同」的凭据。
+       分层让各自保持原名与各自的凭据，同时包内顶层少一个目录。
+       7-Zip ZS 那一组五份（exe、dll、许可、说明、SHA256SUMS）：dll 是 lz4 / lz5 / zstd / brotli 的编解码器载体，
+       缺它这几个格式读不了，含 lz4 压缩的真样本。
+       UnRAR 那一组三份：许可第 2 条允许把 UnRAR 放进别的软件包里分发，第 4 条禁止用它逆向重造压缩算法。
+       两组都照抄上游、一个字节不改（哈希才核得动），凭据是各自目录里的 SHA256SUMS，打包时逐条核。
+       ExcludeFromSingleFile：single-file 默认把 publish 目录里的东西一并内嵌，实测整个 7z\ 消失、
+       包内只剩五个文件。引擎是外部进程、许可原文要随包落地，因此这一组一律排除出 bundle。 -->
+  <ItemGroup>
+    <None Include="engines\7z\7z.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="engines\7z\7z.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="engines\7z\License.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="engines\7z\History-7zip-zs.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="engines\7z\SHA256SUMS" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="engines\unrar\UnRAR.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="engines\unrar\license.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="engines\unrar\SHA256SUMS" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+</Project>

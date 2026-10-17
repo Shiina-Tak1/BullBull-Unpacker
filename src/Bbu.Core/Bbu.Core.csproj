@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Bbu.Core</RootNamespace>
+    <AssemblyName>Bbu.Core</AssemblyName>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- 业务层不引用任何 UI 程序集。-->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 快路的失败计数与 dll 定位需要按打桩路径验证（判据：六种失败模式全回退、复原后照旧能工作），
+         那些状态是内部事实，不对外暴露。 -->
+    <InternalsVisibleTo Include="Bbu.Core.Tests" />
+  </ItemGroup>
+
+  <!-- 中文 Windows 上 7z / Rar 的输出是 GBK，取 936 之前要先注册
+       CodePagesEncodingProvider。那个类型随框架自动可用，
+       不必显式引用包 —— 引了反而报 NU1510。 -->
+</Project>

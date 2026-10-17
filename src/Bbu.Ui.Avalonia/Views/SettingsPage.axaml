@@ -1,0 +1,199 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:Bbu.Ui.Avalonia.Views"
+             xmlns:t="clr-namespace:Bbu.Core.Texts;assembly=Bbu.Core"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Bbu.Ui.Avalonia.Views.SettingsPage"
+             x:DataType="v:SettingsModel">
+
+  <!-- 浮窗内容层：底色透出去，由宿主的 Border.popup 给，这里自己铺一层就会盖掉浮窗的圆角与阴影。
+       每一项长什么样、值从配置的哪一处读写，都由 SettingsModel 里那份描述表给，控件由模板生成。
+       分组是这一页唯一的分类手段 —— 没有左导航，一组就是一张卡片，组标题写在卡片上方。
+
+       项模板放在控件级（UserControl.DataTemplates）：下面每组有两个面板（两列 / 单列），
+       共用同一套模板，模板因此只写一遍。面板二选一用 IsVisible，不在面板里做绑定 ——
+       ItemsPanelTemplate 里的绑定没有 x:DataType，会落到反射绑定，AOT 下绑不上。 -->
+  <UserControl.DataTemplates>
+
+    <!-- 数值：标题在左，上下限与步进来自描述表。 -->
+    <DataTemplate DataType="v:SettingsNumberField" x:DataType="v:SettingsNumberField">
+      <Border Classes="frow" Margin="0,0,12,0">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Grid.Column="0" Classes="flabel" Text="{Binding Label}"
+                     ToolTip.Tip="{Binding Hint}" VerticalAlignment="Center"/>
+          <NumericUpDown Grid.Column="1" Name="NumberBox" Width="120"
+                         Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                         Increment="{Binding Increment}" FormatString="{Binding Format}"
+                         Value="{Binding Value, Mode=TwoWay}"/>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- 开关：标题在左，勾选框在右。 -->
+    <DataTemplate DataType="v:SettingsToggleField" x:DataType="v:SettingsToggleField">
+      <Border Classes="frow" Margin="0,0,12,0">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Grid.Column="0" Classes="flabel" Text="{Binding Label}"
+                     ToolTip.Tip="{Binding Hint}" VerticalAlignment="Center"/>
+          <CheckBox Grid.Column="1" Name="ToggleBox" IsChecked="{Binding Value, Mode=TwoWay}"
+                    AutomationProperties.Name="{Binding Label}"/>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- 下拉：选项由描述表给。 -->
+    <DataTemplate DataType="v:SettingsChoiceField" x:DataType="v:SettingsChoiceField">
+      <Border Classes="frow" Margin="0,0,12,0">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Grid.Column="0" Classes="flabel" Text="{Binding Label}"
+                     ToolTip.Tip="{Binding Hint}" VerticalAlignment="Center"/>
+          <ComboBox Grid.Column="1" Name="ChoiceBox" Width="120" Height="{DynamicResource HInput}"
+                    ItemsSource="{Binding Options}" SelectedIndex="{Binding Index, Mode=TwoWay}">
+            <!-- 收起那一格只有 120 宽，最长那一档装不下（改前「往下找（推荐）」的右括号被切掉，
+                 而且不挂省略号时用户看不出这句没显示完）。给选中值的呈现层挂字符省略号：装不下就以「…」收尾。
+                 选择器落在模板里那两层上：ContentControl#ContentPresenter 是收起的那一格，
+                 再往里的 ContentPresenter#PART_ContentPresenter 才是真正摆字的那一层。
+                 候选列表不在这条选择器上（它是 Popup 里的 ComboBoxItem），展开时照旧看全 —— 那是读全名的唯一路子。 -->
+            <ComboBox.Styles>
+              <Style Selector="ComboBox /template/ ContentControl#ContentPresenter /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+              </Style>
+            </ComboBox.Styles>
+          </ComboBox>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- 多行文本（排除名单）：标题在上、框在下；写法提示同时挂在标题提示与框内 Watermark 上 —— 框里永远有默认名单，只挂 Watermark 是看不见的。 -->
+    <DataTemplate DataType="v:SettingsTextField" x:DataType="v:SettingsTextField">
+      <Border Classes="frow">
+        <StackPanel Spacing="6">
+          <TextBlock Classes="flabel" Text="{Binding Label}" ToolTip.Tip="{Binding Hint}"/>
+          <TextBox Name="TextField" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
+                   Watermark="{Binding Hint}" Text="{Binding Value, Mode=TwoWay}"/>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <!-- 按钮项：它不落盘，动作由页面接上来。 -->
+    <DataTemplate DataType="v:SettingsActionField" x:DataType="v:SettingsActionField">
+      <Border Classes="frow" Margin="0,0,12,0">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Grid.Column="0" Classes="flabel" Text="{Binding Label}" VerticalAlignment="Center"/>
+          <Button Grid.Column="1" Name="ActionButton" Classes="bb btn" Content="{Binding ButtonText}"
+                  Tag="{Binding}" Click="OnFieldAction"/>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- Windows 集成：状态与按钮在右，命令行挂在状态的提示里；两版的开关摆在同一位置。 -->
+    <DataTemplate DataType="v:SettingsShellField" x:DataType="v:SettingsShellField">
+      <Border Classes="frow" Margin="0,0,12,0">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Grid.Column="0" Classes="flabel" Text="{Binding Label}" VerticalAlignment="Center"/>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <TextBlock Name="ShellState" VerticalAlignment="Center" MinWidth="52" Classes="dim"
+                       Text="{Binding State}" ToolTip.Tip="{Binding Command}"
+                       Classes.lvl-info="{Binding Registered}"
+                       Classes.lvl-warn="{Binding !Registered}"/>
+            <!-- 只在不给开关的形态下露出来：绿色版与 Win10 的包形态走注册表三处键，需要「安装／移除」；
+                 Win11 的包由清单提供菜单，这一组只留下面那一个开关（B-2026-163、B-2026-169）。 -->
+            <Button Name="ShellInstall" Classes="bb btn" Content="{Binding InstallText}"
+                    IsVisible="{Binding !FromPackage}" Click="OnShellInstall"/>
+            <Button Name="ShellRemove" Classes="bb btn"
+                    AutomationProperties.Name="{x:Static t:Ui.SettingsShellRemove}"
+                    Content="{x:Static t:Ui.SettingsShellRemove}"
+                    IsVisible="{Binding !FromPackage}" IsEnabled="{Binding CanRemove}" Click="OnShellRemove"/>
+            <Button Name="MenuSwitch" Classes="bb btn"
+                    AutomationProperties.Name="{Binding MenuSwitchText}" Content="{Binding MenuSwitchText}"
+                    IsVisible="{Binding SwitchesVisible}" Click="OnMenuSwitchClick"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- 数据目录：只读路径加一个「打开」；便携目录与系统目录各有一份时，分裂提示排在下面一行。 -->
+    <DataTemplate DataType="v:SettingsDataDirField" x:DataType="v:SettingsDataDirField">
+      <Border Classes="frow" Margin="0,0,12,0">
+        <StackPanel Spacing="4">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Classes="flabel" Text="{Binding Label}" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Name="DataDirValue" Classes="dim" Text="{Binding Value}"
+                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+            <Button Grid.Column="2" Name="DataDirOpen" Classes="bb btn"
+                    AutomationProperties.Name="{x:Static t:Ui.Open}"
+                    Content="{x:Static t:Ui.Open}" Click="OnOpenDataDir"/>
+          </Grid>
+          <TextBlock Name="DataDirNotice" Classes="dim" Text="{Binding Notice}" TextWrapping="Wrap"
+                     IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+  </UserControl.DataTemplates>
+
+  <Border Name="SetCard">
+    <Grid RowDefinitions="Auto,*">
+
+      <Border Grid.Row="0" Padding="16,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <TextBlock Grid.Column="0" Text="{x:Static t:Ui.Settings}" VerticalAlignment="Center"
+                     FontSize="{DynamicResource FsTitle}" FontWeight="SemiBold"/>
+          <Button Grid.Column="2" Name="SetClose" Classes="bb iconbtn"
+                  AutomationProperties.Name="{x:Static t:Ui.Close}"
+                  ToolTip.Tip="{x:Static t:Ui.Close}">
+            <Path Classes="ic lucide" Data="{x:Static v:Icons.Close}"
+                  Stroke="{Binding $parent[Button].Foreground}"/>
+          </Button>
+        </Grid>
+      </Border>
+
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl Name="SetGroups" Margin="16,12,16,16" ItemsSource="{Binding Groups}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="v:SettingsGroup">
+              <StackPanel Spacing="8" Margin="0,0,0,14">
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="2,0,0,0">
+                  <Path Classes="ic lucide" Data="{Binding Icon}"
+                        Stroke="{DynamicResource Dim}" VerticalAlignment="Center"/>
+                  <TextBlock Classes="cardtitle" Text="{Binding Title}" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <Border Classes="card">
+                  <StackPanel>
+                    <!-- 引擎与解压：两列成对排，项内一行（标题在左、控件在右）。 -->
+                    <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding TwoColumn}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <UniformGrid Columns="2"/>
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+
+                    <!-- 系统那一组：单列，项占满整宽。 -->
+                    <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding !TwoColumn}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel/>
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+
+                    <!-- 跨整行的项（排除名单那种多行框）：排在普通项下面，不与别人挤一列。 -->
+                    <ItemsControl ItemsSource="{Binding WideItems}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel/>
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Grid>
+  </Border>
+</UserControl>

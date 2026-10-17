@@ -1,0 +1,1140 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:theme="using:Bbu.Ui.Avalonia.Theme"
+        xmlns:v="clr-namespace:Bbu.Ui.Avalonia.Views"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       交互态样式表 —— 每一组类都把 hover / pressed / disabled / focus 四态写全。
+       Avalonia 的 :pointerover / :pressed / :disabled / :focus-visible
+       对应 CSS 的 :hover / :active / [disabled] / :focus-visible。
+       ══════════════════════════════════════════════════════════════════ -->
+
+  <!-- ── 共用按钮模板：绕开 FluentTheme 的默认外观，四态自己写全 ── -->
+  <Style Selector="Button.bb">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsSmall}"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Name="BbContent"
+                          Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="{TemplateBinding CornerRadius}"
+                          Content="{TemplateBinding Content}"
+                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                          Padding="{TemplateBinding Padding}"
+                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                          RecognizesAccessKey="False">
+          <ContentPresenter.Transitions>
+            <Transitions>
+              <BrushTransition Property="Background" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+              <BrushTransition Property="BorderBrush" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+              <BrushTransition Property="Foreground" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+              <DoubleTransition Property="Opacity" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+            </Transitions>
+          </ContentPresenter.Transitions>
+        </ContentPresenter>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+
+  <!-- ═══════════════ ① 顶栏图标按钮 .iconbtn（app.css .iconbtn） ═══════════════
+       CSS: 28×28 / radius 6 / color:dim
+            :hover        { background:var(‑‑hover); color:var(‑‑text) }
+            :focus-visible{ outline:2px solid var(‑‑accent); outline-offset:1px }
+            （CSS 没有 :active / [disabled]，这里按同一套 token 补全）        -->
+  <Style Selector="Button.iconbtn">
+    <Setter Property="Width" Value="{DynamicResource HIconBtn}"/>
+    <Setter Property="Height" Value="{DynamicResource HIconBtn}"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="Button.iconbtn:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Bg}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="Button.iconbtn:pressed">
+    <Setter Property="Background" Value="{DynamicResource LogBg}"/>
+  </Style>
+  <Style Selector="Button.iconbtn:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="Button.iconbtn:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+
+  <!-- ═══════════════ ①b 命中区补足的图标按钮 .iconbtn.hit ═══════════════
+       视觉仍是 28×28，可点范围补到 44×44；左右各让出 8，再用负 margin 抵消，
+       间距刻度仍只有 4 那一档。这里不写 Background：它的特异性与 .iconbtn:pointerover 相同，
+       写在这里会把悬停底色盖住，顶栏靠左那三个图标因此一直没有反馈。 -->
+  <Style Selector="Button.iconbtn.hit">
+    <Setter Property="Width" Value="{DynamicResource HHitTarget}"/>
+    <Setter Property="Height" Value="{DynamicResource HHitTarget}"/>
+    <Setter Property="Margin" Value="-8,0"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel Background="Transparent">
+          <Border Name="HitFace" Width="{DynamicResource HIconBtn}" Height="{DynamicResource HIconBtn}"
+                  CornerRadius="{DynamicResource Rmd}"
+                  Background="{TemplateBinding Background}"
+                  HorizontalAlignment="Center" VerticalAlignment="Center">
+            <ContentPresenter Name="BbContent"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center"/>
+            <Border.Transitions>
+              <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+              </Transitions>
+            </Border.Transitions>
+          </Border>
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.iconbtn.hit:focus-visible /template/ Border#HitFace">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+
+  <!-- ═══════════════ ② 窗口按钮 .cap（无边框窗口自绘的最小/最大/关闭） ═══════════════
+       没有对应的 CSS（web 版跑在浏览器里）—— 沿用 .iconbtn 的同一套 token，
+       只有"关闭"的 hover 换成 ‑‑err-soft / ‑‑err，不新造颜色。
+       宽高取 HHitTarget：外观由 .iconbtn.hit 的模板给（28 的 HitFace 居中在这一格里）。 -->
+  <Style Selector="Button.cap">
+    <Setter Property="Width" Value="{DynamicResource HHitTarget}"/>
+    <Setter Property="Height" Value="{DynamicResource HHitTarget}"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="Button.cap:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Bg}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="Button.cap:pressed">
+    <Setter Property="Background" Value="{DynamicResource LogBg}"/>
+  </Style>
+  <Style Selector="Button.cap:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="Button.cap:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+  <!-- 关闭按钮：hover/pressed 分别用 err-soft 与 err 实底 -->
+  <Style Selector="Button.cap.close:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ErrSoft}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Err}"/>
+  </Style>
+  <Style Selector="Button.cap.close:pressed">
+    <Setter Property="Background" Value="{DynamicResource Err}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AccentInk}"/>
+  </Style>
+
+  <!-- ═══════════════ ③ 工具条按钮 .tbtn（app.css .tbtn） ═══════════════
+       CSS: height 24 / radius 5→6 / color:dim
+            :hover   { background:var(‑‑hover); color:var(‑‑text) }
+            :disabled{ opacity:.4; cursor:not-allowed }
+            :disabled:hover { background:transparent; color:var(‑‑dim) }   ← 关键：禁用后 hover 不再变亮
+            :focus-visible { outline:2px solid var(‑‑accent); outline-offset:1px }
+            [aria-pressed=true] { background:var(‑‑accent-soft); color:var(‑‑accent) } -->
+  <Style Selector="Button.tbtn">
+    <Setter Property="Height" Value="{DynamicResource HBtnSm}"/>
+    <Setter Property="Padding" Value="8,0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <!-- 悬停：区域加深一档（Bg / LogBg 比 Surface 更暗）、文字往上提一档（Dim → Ink）。 -->
+  <Style Selector="Button.tbtn:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Bg}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="Button.tbtn:pressed">
+    <Setter Property="Background" Value="{DynamicResource LogBg}"/>
+  </Style>
+  <Style Selector="Button.tbtn:disabled">
+    <Setter Property="Opacity" Value="0.40"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="Button.tbtn:disabled:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="Button.tbtn:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+
+  <!-- ═══════════════ ④ 底栏按钮 .btn（app.css .btn） ═══════════════
+       CSS: height 32 / radius 6 / bg:surface2 / border:1px border2
+            :hover   { background:var(‑‑hover); border-color:var(‑‑accent) }
+            :focus-visible { outline:2px solid var(‑‑accent); outline-offset:2px }
+            [disabled] { opacity:.42; cursor:not-allowed }
+            [disabled]:hover { background:var(‑‑surface2); border-color:var(‑‑border2) } -->
+  <Style Selector="Button.btn">
+    <Setter Property="Height" Value="{DynamicResource HBtn}"/>
+    <Setter Property="Padding" Value="12,0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <!-- 按下缩到 98%：基线写 none 而不是留空（过渡要起点）；主按钮含 .btn，也走这条。 -->
+    <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+    <Setter Property="RenderTransform" Value="none"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <!-- 悬停：底色从 Surface2 往下走一档（Hover），文字从 Dim 往上提一档（Ink）。 -->
+  <Style Selector="Button.btn:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.btn:pressed">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="RenderTransform" Value="scale(0.98)"/>
+  </Style>
+  <Style Selector="Button.btn:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="Button.btn:disabled:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+  </Style>
+  <Style Selector="Button.btn:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRing}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑤ 主按钮 .btn.primary ═══════════════
+       描边蓝：底取 Clear、描边与字都取 Accent，悬停与按下走软色。三种按钮角色同构、只换色相，
+       实底那一份收在 .solid。 -->
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.primary:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <Style Selector="Button.primary:pressed">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftDeep}"/>
+  </Style>
+  <Style Selector="Button.primary:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+  </Style>
+  <!-- 禁用后 hover 必须把底与描边挡回来：.btn:disabled:pointerover 的特异性与本条相同，靠排在其后取胜。 -->
+  <Style Selector="Button.primary:disabled:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.primary:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRing}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑤b 唯一实底按钮 .btn.solid ═══════════════
+       实底只留这一份：实底一多，重点色就不成其为重点。它只给主界面「开始」，其余主操作走 .primary 的描边形态。
+       亮暗两档取 AccentBright 与 AccentDim：C# 侧没有 filter，
+       改用 accent 与 accent-ink 之间的中间色实现同一档，不新造色相。 -->
+  <Style Selector="Button.solid">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AccentInk}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.solid:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AccentBright}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AccentInk}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Clear}"/>
+  </Style>
+  <Style Selector="Button.solid:pressed">
+    <Setter Property="Background" Value="{DynamicResource AccentDim}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AccentInk}"/>
+  </Style>
+  <Style Selector="Button.solid:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+  </Style>
+  <Style Selector="Button.solid:disabled:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.solid:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRing}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑤c 破坏性按钮 .btn.danger ═══════════════
+       与 .primary 同构、只换色相：破坏性动作与「取消」同色时，用户看不出哪一颗会改数据。描边红只说"会改数据"，不说"是默认项"。 -->
+  <Style Selector="Button.danger">
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Err}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Err}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.danger:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ErrSoft}"/>
+  </Style>
+  <Style Selector="Button.danger:pressed">
+    <Setter Property="Background" Value="{DynamicResource ErrSoftDeep}"/>
+  </Style>
+  <Style Selector="Button.danger:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+  </Style>
+  <Style Selector="Button.danger:disabled:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Err}"/>
+  </Style>
+  <Style Selector="Button.danger:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRing}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑤d 文本链接 .link（与 .bb 同用：按钮模板与焦点环部件在那一档） ═══════════════
+       只写与 .bb 不同的取值；它无底无框、没有可加深的区域，所以按下把文字再提一档。 -->
+  <Style Selector="Button.link">
+    <Setter Property="CornerRadius" Value="{DynamicResource Rsm}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="Button.link:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="Button.link:pressed">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.link:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="Button.link:disabled:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="Button.link:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑥ 输出摘要 .outsum（app.css .outsum） ═══════════════
+       CSS: height 30 / radius 6 / bg:surface2 / border:1px border2 / color:dim
+            :hover { border-color:var(‑‑accent); color:var(‑‑text) }
+            :focus-visible { outline:2px solid var(‑‑accent); outline-offset:2px } -->
+  <Style Selector="Button.outsum">
+    <Setter Property="Height" Value="{DynamicResource HOutSum}"/>
+    <Setter Property="Padding" Value="12,0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsSmall}"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Foreground" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.outsum:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="Button.outsum:pressed">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+  </Style>
+  <Style Selector="Button.outsum:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="Button.outsum:disabled:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="Button.outsum:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRing}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑦ 分段筛选 .seg（app.css .tbtn[aria-pressed]） ═══════════════ -->
+  <Style Selector="ToggleButton.seg">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsSmall}"/>
+    <Setter Property="Height" Value="{DynamicResource HBtnSm}"/>
+    <Setter Property="Padding" Value="8,0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Name="BbContent"
+                          Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="{TemplateBinding CornerRadius}"
+                          Content="{TemplateBinding Content}"
+                          Padding="{TemplateBinding Padding}"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center">
+          <ContentPresenter.Transitions>
+            <Transitions>
+              <BrushTransition Property="Background" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+              <BrushTransition Property="BorderBrush" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+              <BrushTransition Property="Foreground" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+            </Transitions>
+          </ContentPresenter.Transitions>
+        </ContentPresenter>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.seg:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Bg}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="ToggleButton.seg:pressed">
+    <Setter Property="Background" Value="{DynamicResource LogBg}"/>
+  </Style>
+  <Style Selector="ToggleButton.seg:checked">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="ToggleButton.seg:checked:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="ToggleButton.seg:disabled">
+    <Setter Property="Opacity" Value="0.40"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="ToggleButton.seg:disabled:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="ToggleButton.seg:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑧ 日志「跟随」勾选 .chk（app.css .loghead .chk） ═══════════════ -->
+  <Style Selector="ToggleButton.chk">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsSmall}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rsm}"/>
+    <Setter Property="Padding" Value="4,2"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent">
+          <Border Name="box" Width="14" Height="14" CornerRadius="4"
+                  Background="{DynamicResource Surface2}"
+                  BorderBrush="{DynamicResource Border2}" BorderThickness="1"
+                  VerticalAlignment="Center">
+            <Border.Transitions>
+              <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+              </Transitions>
+            </Border.Transitions>
+            <Path Name="tick" Data="M1,5 L4,8 L9,2" Stroke="{DynamicResource AccentInk}"
+                  StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                  Opacity="0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            VerticalAlignment="Center"
+                            Foreground="{TemplateBinding Foreground}"/>
+        </StackPanel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.chk:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+  </Style>
+  <Style Selector="ToggleButton.chk:pointerover /template/ Border#box">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="ToggleButton.chk:pressed /template/ Border#box">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+  </Style>
+  <Style Selector="ToggleButton.chk:checked /template/ Border#box">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="ToggleButton.chk:checked /template/ Path#tick">
+    <Setter Property="Opacity" Value="1"/>
+  </Style>
+  <Style Selector="ToggleButton.chk:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="ToggleButton.chk:focus-visible /template/ ContentPresenter#BbContent">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑧b 输入控件的取色：勾选框、单选、输入框、下拉、列表选中 ═══════════════
+       覆盖 FluentTheme 的默认强调色：框架那一套与产品的主题令牌无关，深色底上是一块紫（B-2026-120）。
+       取值一律走令牌，勾选框与单选照 §⑧ 那个 .chk 的同一套。 -->
+  <!-- 状态取值一律写在样式里，模板内不写赋值：模板内的赋值在 Avalonia 里是本地值，
+       普通 Style 的 Setter 无法覆盖它，把颜色写进模板再用 :checked 覆盖，勾选后不会变色。 -->
+  <Style Selector="CheckBox">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsSmall}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent">
+          <Border Name="Box" Width="16" Height="16" CornerRadius="4" BorderThickness="1"
+                  VerticalAlignment="Center">
+            <Path Name="Tick" Data="M1,5 L4,8 L9,2" Stroke="{DynamicResource AccentInk}"
+                  StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            VerticalAlignment="Center"
+                            Foreground="{TemplateBinding Foreground}"/>
+        </StackPanel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="CheckBox /template/ Border#Box">
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+  </Style>
+  <Style Selector="CheckBox /template/ Path#Tick">
+    <Setter Property="Opacity" Value="0"/>
+  </Style>
+  <Style Selector="CheckBox:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="CheckBox:pointerover /template/ Border#Box">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="CheckBox:pressed /template/ Border#Box">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+  </Style>
+  <Style Selector="CheckBox:checked /template/ Border#Box">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="CheckBox:checked /template/ Path#Tick">
+    <Setter Property="Opacity" Value="1"/>
+  </Style>
+  <Style Selector="CheckBox:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="CheckBox:focus-visible /template/ Border#Box">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+
+  <Style Selector="RadioButton">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsSmall}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent">
+          <Border Name="Ring" Width="16" Height="16" CornerRadius="8" BorderThickness="1"
+                  VerticalAlignment="Center">
+            <Ellipse Name="Dot" Width="7" Height="7" Fill="{DynamicResource AccentInk}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            VerticalAlignment="Center"
+                            Foreground="{TemplateBinding Foreground}"/>
+        </StackPanel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="RadioButton /template/ Border#Ring">
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+  </Style>
+  <Style Selector="RadioButton /template/ Ellipse#Dot">
+    <Setter Property="Opacity" Value="0"/>
+  </Style>
+  <Style Selector="RadioButton:pointerover /template/ Border#Ring">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="RadioButton:pressed /template/ Border#Ring">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+  </Style>
+  <Style Selector="RadioButton:checked /template/ Border#Ring">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="RadioButton:checked /template/ Ellipse#Dot">
+    <Setter Property="Opacity" Value="1"/>
+  </Style>
+  <Style Selector="RadioButton:disabled">
+    <Setter Property="Opacity" Value="0.42"/>
+    <Setter Property="Cursor" Value="Arrow"/>
+  </Style>
+  <Style Selector="RadioButton:focus-visible /template/ Border#Ring">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingTight}"/>
+  </Style>
+
+  <!-- 输入框：焦点那一圈与选中的文字也取令牌，不取框架强调色。 -->
+  <Style Selector="TextBox">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+    <Setter Property="SelectionBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="SelectionForegroundBrush" Value="{DynamicResource AccentInk}"/>
+    <Setter Property="CaretBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- 下拉：收起的那一格与展开后的选中项。外观与数值框对齐，所以也把模板里那层 Border 的边框去掉。 -->
+  <Style Selector="ComboBox">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+  </Style>
+  <Style Selector="ComboBox /template/ Border#Background">
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+  </Style>
+  <Style Selector="ComboBox /template/ PathIcon#DropDownGlyph">
+    <Setter Property="Width" Value="10"/>
+    <Setter Property="Height" Value="10"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="ComboBox /template/ Border#DropDownOverlay">
+    <Setter Property="Width" Value="24"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+  </Style>
+  <Style Selector="ComboBox:pointerover /template/ Border#Background">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+  <Style Selector="ComboBox:focus /template/ Border#Background">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="ComboBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+
+  <!-- 字体族：这几类的 ControlTheme 由 FluentTheme 给，Setter 优先于继承值；等宽只剩日志那两处。 -->
+  <Style Selector="ComboBoxItem">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+  </Style>
+  <Style Selector="ListBox">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+  </Style>
+  <Style Selector="ListBoxItem">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+  </Style>
+  <Style Selector="MenuItem">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+  </Style>
+  <Style Selector="ToolTip">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+  </Style>
+
+  <!-- 列表选中：框架默认是强调色实底，这里取 accent-soft 底加正文前景，与清单行的 .sel 同一套。 -->
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+
+  <!-- ═══════════════ ⑨ 任务行 .row（app.css .row） ═══════════════
+       CSS: height 32 / padding 0 10px
+            :hover   { background:var(‑‑hover) }
+            .sel     { background:var(‑‑accent-soft) }
+            :focus-visible { outline:2px solid var(‑‑accent); outline-offset:-2px }
+            （行永远可选、可点，本 demo 没有任何一行会被 disabled —— 那一格标 N/A） -->
+  <Style Selector="Border.row">
+    <Setter Property="Height" Value="{DynamicResource HRow}"/>
+    <Setter Property="Padding" Value="{DynamicResource PadRow}"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="Border.row:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Border.row:pressed">
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+  </Style>
+  <Style Selector="Border.row.sel">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <Style Selector="Border.row:focus-visible">
+    <Setter Property="BoxShadow" Value="{DynamicResource FocusRingInset}"/>
+  </Style>
+
+  <!-- 行插入动效：行一挂上就跑一次（透明度 + 上移 6px 的两段式进入，时长与缓动取本仓的 Motion 令牌）。
+       FillMode 取 Forward：动画结束后保持终态，否则摘掉动画的那一刻会闪回静态初值：
+       动画结束后保持终态，否则摘掉动画的那一刻会闪回"透明 + 上移"的静态初值。
+       初值写在样式体里（Opacity 与 RenderTransform 两个 Setter），
+       所以动画开始前的那一帧也是对的，不会先闪现一次最终态。 -->
+  <Style Selector="Border.row.enter">
+    <Setter Property="Opacity" Value="0"/>
+    <Setter Property="RenderTransform">
+      <TranslateTransform X="0" Y="-6"/>
+    </Setter>
+    <Style.Animations>
+      <Animation Duration="0:0:0.200" FillMode="Forward" Easing="{x:Static theme:Motion.EaseOut}">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="-6"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- 失败行就地展开的归因块（app.css .reason） -->
+  <Style Selector="Border.reason">
+    <Setter Property="Background" Value="{DynamicResource ErrSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="Padding" Value="12,8,12,10"/>
+  </Style>
+  <Style Selector="Border.reason.warn">
+    <Setter Property="Background" Value="{DynamicResource WarnSoft}"/>
+  </Style>
+
+  <!-- 列表表头 .lhead（app.css .lhead） -->
+  <Style Selector="Border.lhead">
+    <Setter Property="Height" Value="{DynamicResource HListHead}"/>
+    <Setter Property="Padding" Value="{DynamicResource PadRow}"/>
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+  </Style>
+
+  <!-- 列表体：比浮窗卡片（Raised）深一档的底，用它把"容器"与"卡片"分开；行本身仍然透明。 -->
+  <Style Selector="ListBox.listbody">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+  </Style>
+
+  <!-- ═══════════════ 浮窗里的分组卡片与设置项 ═══════════════
+       分组是设置页唯一的分类手段：没有左导航，一组就是一张卡片。
+       上下留白取 8：与项的 8 相加等于项与项之间的 16，首尾与项间因此一样宽（原先 14 会宽出一截）。 -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rlg}"/>
+    <Setter Property="Padding" Value="14,8"/>
+  </Style>
+
+  <!-- 组标题：与项标题同号、加粗，靠字重与位置拉开层次。 -->
+  <Style Selector="TextBlock.cardtitle">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsBody}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+
+  <!-- 一项：标题在左、控件在右，同一行。项高按一行取 HSettingRow，上下留白 8 ——
+       原先的 10 与项高叠起来显得很空（单行高度非常高、上下边距不一致）。 -->
+  <Style Selector="Border.frow">
+    <Setter Property="MinHeight" Value="{DynamicResource HSettingRow}"/>
+    <Setter Property="Padding" Value="0,8"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+  </Style>
+
+  <!-- 项标题取次级色：与关于页的值同一档，最亮的 Text 留给正文与输入（看图反馈）。 -->
+  <Style Selector="TextBlock.flabel">
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsBody}"/>
+  </Style>
+
+  <!-- 数值框：给 Height 而不是 MinHeight（后者不封顶），否则默认内容会把它撑到 74。 -->
+  <Style Selector="NumericUpDown">
+    <Setter Property="FontFamily" Value="{DynamicResource Sans}"/>
+    <Setter Property="Background" Value="{DynamicResource Surface2}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rmd}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="Height" Value="{DynamicResource HInput}"/>
+  </Style>
+  <Style Selector="NumericUpDown /template/ ButtonSpinner#PART_Spinner">
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+  </Style>
+  <Style Selector="NumericUpDown /template/ TextBox#PART_TextBox">
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <!-- 加减按钮在 ButtonSpinner 自己的模板里，模板给的 34 是本地值，样式改不到它，所以换掉它的模板。 -->
+  <Style Selector="ButtonSpinner">
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{DynamicResource Surface2}" CornerRadius="{DynamicResource Rmd}">
+          <DockPanel>
+            <StackPanel Name="PART_SpinnerPanel" DockPanel.Dock="Right" Orientation="Horizontal"
+                        Spacing="4" VerticalAlignment="Center" Margin="0,0,4,0">
+              <RepeatButton Name="PART_IncreaseButton" Classes="spin">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.ChevronUp}"
+                      Stroke="{Binding $parent[RepeatButton].Foreground}"/>
+              </RepeatButton>
+              <RepeatButton Name="PART_DecreaseButton" Classes="spin">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.ChevronDown}"
+                      Stroke="{Binding $parent[RepeatButton].Foreground}"/>
+              </RepeatButton>
+            </StackPanel>
+            <ContentPresenter Name="PART_ContentPresenter"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              VerticalContentAlignment="Center" Margin="8,0,0,0"/>
+          </DockPanel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="RepeatButton.spin">
+    <Setter Property="Width" Value="18"/>
+    <Setter Property="Height" Value="18"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rsm}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="RepeatButton.spin:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+
+  <!-- 说明副标题那一档样式（`.fnote`）随设置项的说明文字一起删掉了：设置页 2026-10-06 起不再有副标题。 -->
+
+  <Style Selector="Border.vsep">
+    <Setter Property="Width" Value="1"/>
+    <Setter Property="Height" Value="16"/>
+    <Setter Property="Background" Value="{DynamicResource Border}"/>
+    <Setter Property="Margin" Value="4,0"/>
+  </Style>
+
+  <!-- 拖入时的放置提示：虚线框加一句话。 -->
+  <Style Selector="Border.dropzone">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rlg}"/>
+  </Style>
+
+  <!-- ═══════════════ 文本层级 ═══════════════ -->
+  <Style Selector="TextBlock.dim">
+    <Setter Property="Foreground" Value="{DynamicResource Dim}"/>
+  </Style>
+  <Style Selector="TextBlock.faint">
+    <Setter Property="Foreground" Value="{DynamicResource Faint}"/>
+  </Style>
+  <!-- 状态色只给图标着色；文字取级别色（见下方 lvl-* 一组），不靠颜色单独表意。 -->
+  <Style Selector="Path.ic">
+    <Setter Property="StrokeThickness" Value="1.5"/>
+    <Setter Property="StrokeLineCap" Value="Round"/>
+    <Setter Property="StrokeJoin" Value="Round"/>
+    <Setter Property="Stretch" Value="None"/>
+  </Style>
+  <Style Selector="Path.ic-ok"><Setter Property="Stroke" Value="{DynamicResource Ok}"/></Style>
+  <Style Selector="Path.ic-err"><Setter Property="Stroke" Value="{DynamicResource Err}"/></Style>
+  <Style Selector="Path.ic-warn"><Setter Property="Stroke" Value="{DynamicResource Warn}"/></Style>
+  <Style Selector="Path.ic-run"><Setter Property="Stroke" Value="{DynamicResource Accent}"/></Style>
+  <Style Selector="Path.ic-wait"><Setter Property="Stroke" Value="{DynamicResource Dim}"/></Style>
+
+  <!-- ═══════════════ Lucide 图标（16 网格那一套） ═══════════════
+       图形取自 Lucide，数据在 Views\Icons.Lucide.cs（生成物），已缩放到本仓的 16 网格。
+       尺寸与线宽在这里统一给：引用处再写尺寸会让几何溢出、图标与文字的中心也跟着偏。
+       引用写法：Classes="ic lucide" + Data="{x:Static v:Icons.<名字>}"，不写 Width/Height。 -->
+  <Style Selector="Path.lucide">
+    <Setter Property="Width" Value="16"/>
+    <Setter Property="Height" Value="16"/>
+    <Setter Property="Stretch" Value="None"/>
+    <Setter Property="StrokeThickness" Value="1.34"/>
+  </Style>
+
+  <!-- 品牌图形（官方素材，填充 + Stretch）：边长取按钮那一档字号，与文字等高（要求）。 -->
+  <Style Selector="Path.brand">
+    <Setter Property="Width" Value="{DynamicResource FsSmall}"/>
+    <Setter Property="Height" Value="{DynamicResource FsSmall}"/>
+    <Setter Property="Stretch" Value="Uniform"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- 运行中图标的旋转。无限循环动画仅此一处：它不经过过渡系统，
+       挂不挂由代码按行状态判定，样式表不自行判定。 -->
+  <Style Selector="Path.spin">
+    <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+    <Setter Property="RenderTransform">
+      <RotateTransform/>
+    </Setter>
+    <Style.Animations>
+      <Animation Duration="0:0:1.4" IterationCount="INFINITE">
+        <KeyFrame Cue="0%">
+          <Setter Property="RotateTransform.Angle" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="RotateTransform.Angle" Value="360"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- 进度：元素级过渡（app.css .pbar .track i { transition:width var(‑‑base) var(‑‑ease-out) }） -->
+  <!-- 段不带圆角：条高 6，段端圆角会在相邻段之间咬出凹口，把一条连续彩条切成藕节。
+       整条的外圆角由 ProgTrack 给（CornerRadius 3 ＋ ClipToBounds）。 -->
+  <Style Selector="Border.pfill">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Width" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+        <BrushTransition Property="Background" Duration="0:0:0.200" Easing="{x:Static theme:Motion.EaseOut}"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- 浮层的进与出都挂在 open 与 closing 上，挂类即播放：进场之前浮窗的样式尚未应用，
+       退场时动画值一撤即落回样式值，两端都不构成可过渡的起点，故不走 Transitions。 -->
+  <Style Selector="Border.scrim">
+    <Setter Property="Background" Value="{DynamicResource Scrim}"/>
+    <Setter Property="Opacity" Value="0"/>
+  </Style>
+  <Style Selector="Border.scrim.open">
+    <Setter Property="Opacity" Value="1"/>
+    <Style.Animations>
+      <Animation Duration="0:0:0.200" FillMode="Forward" Easing="{x:Static theme:Motion.EaseOut}">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Border.scrim.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.180" FillMode="Forward" Easing="{x:Static theme:Motion.EaseExit}">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <Style Selector="Border.modal">
+    <Setter Property="Background" Value="{DynamicResource Raised}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border2}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{DynamicResource Rlg}"/>
+    <Setter Property="Width" Value="460"/>
+    <Setter Property="Opacity" Value="0"/>
+    <Setter Property="RenderTransform">
+      <TranslateTransform X="0" Y="18"/>
+    </Setter>
+  </Style>
+  <Style Selector="Border.modal.open">
+    <Setter Property="Opacity" Value="1"/>
+    <Setter Property="RenderTransform">
+      <TranslateTransform X="0" Y="0"/>
+    </Setter>
+    <Style.Animations>
+      <Animation Duration="0:0:0.260" FillMode="Forward" Easing="{x:Static theme:Motion.EaseSpring}">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="18"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Border.modal.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.200" FillMode="Forward" Easing="{x:Static theme:Motion.EaseExit}">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="9"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- ═══════════════ 浮窗容器（设置页与密码本页） ═══════════════
+       窗口内居中的一张卡：不是整页、也不是右侧抽屉。四周留白，整体不超过窗口的
+       78%×82%，上限由宿主按实际尺寸压。遮罩压暗主界面，
+       点遮罩不关 —— 这两个页面都是改完即存，误关的代价比多按一次 Esc 大。 -->
+  <Style Selector="Border.popup">
+    <Setter Property="MinWidth" Value="{DynamicResource WPopupMin}"/>
+    <Setter Property="Height" Value="{DynamicResource HPopupFixed}"/>
+    <Setter Property="Background" Value="{DynamicResource Raised}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="BoxShadow" Value="{DynamicResource ShadowMd}"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Opacity" Value="0"/>
+    <Setter Property="RenderTransform">
+      <TranslateTransform X="0" Y="16"/>
+    </Setter>
+  </Style>
+  <Style Selector="Border.popup.open">
+    <Setter Property="Opacity" Value="1"/>
+    <Setter Property="RenderTransform">
+      <TranslateTransform X="0" Y="0"/>
+    </Setter>
+    <Style.Animations>
+      <Animation Duration="0:0:0.260" FillMode="Forward" Easing="{x:Static theme:Motion.EaseSpring}">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="16"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Border.popup.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.200" FillMode="Forward" Easing="{x:Static theme:Motion.EaseExit}">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="8"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- 列宽把手：命中区取 Breakpoints.SplitHit，视觉线宽为居中的 7px；命中区与视觉线宽分别取值，加宽可点范围不得加粗线条 -->
+  <Style Selector="Thumb.colsplit">
+    <Setter Property="Width" Value="{x:Static v:Breakpoints.SplitHit}"/>
+    <Setter Property="Background" Value="{DynamicResource Clear}"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="ColBar" Width="7" HorizontalAlignment="Center"
+                Background="{TemplateBinding Background}"/>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Thumb.colsplit:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Border2}"/>
+  </Style>
+  <Style Selector="Thumb.colsplit:pressed">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- ═══════════════ 日志行（app.css .ln） ═══════════════ -->
+  <Style Selector="TextBlock.lg-ts">
+    <Setter Property="Foreground" Value="{DynamicResource Faint}"/>
+    <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsMono}"/>
+    <Setter Property="TextAlignment" Value="Right"/>
+    <Setter Property="Margin" Value="0,0,8,0"/>
+  </Style>
+
+  <!-- 进度段的过渡由 Border.pfill 给；填充色在视图里内联取 DynamicResource，
+       本地值盖过样式，主题切换时它会自动重算。 -->
+
+  <Style Selector="Border.pfill"><Setter Property="Background" Value="{DynamicResource Ok}"/></Style>
+
+  <!-- 日志面板里的一行：等宽小字。颜色不在这里给 —— 它由紧随其后的 lvl-* 定，
+       Avalonia 是「后定义者胜」，与 Classes 里的书写顺序无关，所以这一条必须排在前面。 -->
+  <Style Selector="TextBlock.logline">
+    <Setter Property="FontFamily" Value="{DynamicResource Mono}"/>
+    <Setter Property="FontSize" Value="{DynamicResource FsMono}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+
+  <!-- ═══════════════ 文案级别的四个类 ═══════════════
+       级别到颜色的映射只在这里（外加 Views\Levels.cs 里那一个类名换算）。
+       视图只说「这一句是哪一级」，颜色随主题变，改配色不动视图代码。
+       Debug 与 Info 都取 Dim：Debug 那一档不上界面，它的颜色令牌跟随 Info；Info 是陈述档，
+       没有成功档之后「完成」那几句也落在这一级。
+       第五条 lvl-accent 不是级别：运行中那一格按状态取强调色。 -->
+  <Style Selector="TextBlock.lvl-debug"><Setter Property="Foreground" Value="{DynamicResource Dim}"/></Style>
+  <Style Selector="TextBlock.lvl-info"><Setter Property="Foreground" Value="{DynamicResource Dim}"/></Style>
+  <Style Selector="TextBlock.lvl-warn"><Setter Property="Foreground" Value="{DynamicResource Warn}"/></Style>
+  <Style Selector="TextBlock.lvl-error"><Setter Property="Foreground" Value="{DynamicResource Err}"/></Style>
+  <Style Selector="TextBlock.lvl-accent"><Setter Property="Foreground" Value="{DynamicResource Accent}"/></Style>
+
+  <!-- 层级刻度：一格一根竖条。走完的实心成功色，当前那格强调色，没到的留底 -->
+  <Style Selector="Border.tick">
+    <Setter Property="Width" Value="3"/>
+    <Setter Property="Height" Value="10"/>
+    <Setter Property="CornerRadius" Value="1.5"/>
+    <Setter Property="Background" Value="{DynamicResource Border2}"/>
+  </Style>
+  <Style Selector="Border.tick.on"><Setter Property="Background" Value="{DynamicResource Ok}"/></Style>
+  <Style Selector="Border.tick.cur"><Setter Property="Background" Value="{DynamicResource Accent}"/></Style>
+
+  <!-- 日志面板：展开时高度上限从 0 长到目标值，收起立即回 0；目标值由代码从 Breakpoints 一处取。 -->
+  <Style Selector="Grid.logpanel">
+    <Setter Property="ClipToBounds" Value="True"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="MaxHeight" Duration="0:0:0.220" Easing="{x:Static theme:Motion.EaseOut}"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- ═══════════════ 不会处理的行 ═══════════════
+       非可运行行整行转次要色。用颜色而不是 opacity —— 压暗会把对比度乘到
+       4.5:1 以下，而正文对比度不得低于 4.5:1。
+       它排在所有 lvl-* 之后：Avalonia 是后定义者胜。 -->
+  <Style Selector="Border.row.dim TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Faint}"/>
+  </Style>
+
+</Styles>

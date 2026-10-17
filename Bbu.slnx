@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Bbu.Core/Bbu.Core.csproj" />
+    <Project Path="src/Bbu.Ui.Avalonia/Bbu.Ui.Avalonia.csproj" />
+    <Project Path="src/Bbu.App/Bbu.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Bbu.Core.Tests/Bbu.Core.Tests.csproj" />
+    <Project Path="tests/Bbu.Ui.Tests/Bbu.Ui.Tests.csproj" />
+    <Project Path="tests/Bbu.Contract.Tests/Bbu.Contract.Tests.csproj" />
+  </Folder>
+</Solution>

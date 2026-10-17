@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  稀疏包（身份包）清单模板：zip 渠道的新式菜单靠它拿到包身份。
+  占位符在打包时替换；三个身份属性取自 src\Bbu.App\app.manifest 的 msix 元素，
+  发布者显示名取自 Directory.Build.props 的 BbuPublisherDisplayName（两处都与完整包同源）。
+  身份值一处都不写死在模板里，两处必须逐字段一致，否则注册成功而运行时没有身份（0x80073D54）。
+
+  与完整包的差别：AllowExternalContent 让程序本体留在包外（绿色版目录），
+  Capabilities 多一条 unvirtualizedResources，Application 用 win32App 且不写 EntryPoint。
+-->
+<Package IgnorableNamespaces="uap uap10 rescap com desktop4 desktop5 desktop6 desktop9 virtualization"
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  xmlns:desktop9="http://schemas.microsoft.com/appx/manifest/desktop/windows10/9"
+  xmlns:virtualization="http://schemas.microsoft.com/appx/manifest/virtualization/windows10">
+
+  <Identity Name="{{PACKAGE_NAME}}"
+            Publisher="{{PUBLISHER}}"
+            Version="{{VERSION}}"
+            ProcessorArchitecture="neutral" />
+
+  <Properties>
+    <DisplayName>BullBull Unpacker 右键菜单</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+    <!-- 文件系统写入不虚拟化：默认会把 %APPDATA% 重定向到包容器，数据落真实用户目录，卸载后仍在。
+         两套写法都留着：下面第一条是旧语法，保 2004 之前的系统，与 Capabilities 的
+         unvirtualizedResources 成对出现；第二条是新语法，Win11 起生效，把范围从「关掉这一档
+         全部虚拟化」缩成「只豁免程序自己的两个位置」。 -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+    <virtualization:FileSystemWriteVirtualization>
+      <virtualization:ExcludedDirectories>
+        <virtualization:ExcludedDirectory>$(KnownFolder:RoamingAppData)\BullBullUnpacker</virtualization:ExcludedDirectory>
+        <virtualization:ExcludedDirectory>$(KnownFolder:LocalAppData)\BullBullUnpacker</virtualization:ExcludedDirectory>
+      </virtualization:ExcludedDirectories>
+    </virtualization:FileSystemWriteVirtualization>
+  </Properties>
+
+  <Resources>
+    <Resource Language="zh-CN" />
+  </Resources>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+
+  <Applications>
+    <Application Id="{{APPLICATION_ID}}"
+                 Executable="{{EXECUTABLE}}"
+                 uap10:TrustLevel="mediumIL"
+                 uap10:RuntimeBehavior="win32App">
+      <!-- AppListEntry=none：身份包不出现在已安装应用列表里 -->
+      <uap:VisualElements AppListEntry="none"
+                          DisplayName="BullBull Unpacker"
+                          Description="把压缩包加入清单，在窗口里开始解压"
+                          BackgroundColor="transparent"
+                          Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png" />
+
+      <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="BullBull Unpacker 右键菜单">
+              <com:Class Id="{{CLSID}}" Path="runtime\Bbu.ShellExt.dll" ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="BBUnpacker" Clsid="{{CLSID}}" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="BBUnpacker" Clsid="{{CLSID}}" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory\Background">
+              <desktop5:Verb Id="BBUnpacker" Clsid="{{CLSID}}" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+
+        <!-- 经典那一层：文件夹空白处与桌面由它提供 -->
+        <desktop9:Extension Category="windows.fileExplorerClassicContextMenuHandler">
+          <desktop9:FileExplorerClassicContextMenuHandler>
+            <desktop9:ExtensionHandler Type="*" Clsid="{{CLSID}}" />
+            <desktop9:ExtensionHandler Type="Directory" Clsid="{{CLSID}}" />
+            <desktop9:ExtensionHandler Type="Directory\Background" Clsid="{{CLSID}}" />
+          </desktop9:FileExplorerClassicContextMenuHandler>
+        </desktop9:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

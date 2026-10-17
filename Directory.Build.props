@@ -1,0 +1,60 @@
+<Project>
+
+  <!--
+    版本元数据与产品名的单一出处。消费者分三类：AppInfo.Version 在运行时读程序集特性，
+    打包脚本走 dotnet msbuild -getProperty，发布工作流与个别工具直接读这一处的文本
+    （各自带一份同款正则）。这个文件随同步进公开仓，所以这里不点名只在开发仓存在的消费者。
+
+    包身份那三个属性（publisher / packageName / applicationId）不在这里，
+    见 src\Bbu.App\app.manifest 的注释；包清单的 PublisherDisplayName 在这里 ——
+    它是商店的**账户级字段**（分配值 Tak1），与产品名不是一回事，所以两处分开。
+
+    发布脚本只传后缀（-p:VersionSuffix=beta.1），永不传 -p:Version / -p:VersionPrefix：
+    一传，这一处就降级成「被覆盖的那个」。
+  -->
+  <PropertyGroup>
+    <VersionPrefix>1.2.0</VersionPrefix>
+
+    <!-- 清单只吃四段纯数字。预发布时第四段取后缀末尾的序号：beta.1 换算成 .1 -->
+    <BbuMsixVersion Condition="'$(VersionSuffix)' == ''">$(VersionPrefix).0</BbuMsixVersion>
+    <BbuMsixVersion Condition="'$(VersionSuffix)' != ''">$(VersionPrefix).$([System.Text.RegularExpressions.Regex]::Match('$(VersionSuffix)', '[0-9]+$').Value)</BbuMsixVersion>
+
+    <!-- 包清单的 PublisherDisplayName：商店的账户级字段，与产品名不是一回事。
+         Identity 那两个属性（Name / Publisher）还嵌在 Bbu.ShellExt.dll 的编译期清单资源里，
+         打包脚本改不了它们，传参会与 DLL 内嵌的那份劈叉；展示名只出现在包清单里
+         （SxS 清单的 msix 元素装不下它），传参无害。
+         三处取同一个值，仓库默认值即提交值。 -->
+    <BbuPublisherDisplayName>Tak1</BbuPublisherDisplayName>
+
+    <!-- 版本资源的四个字段。AssemblyVersion 参与程序集绑定，不随后缀走 -->
+    <Product>BullBull Unpacker</Product>
+    <AssemblyTitle>BullBull Unpacker</AssemblyTitle>
+    <FileDescription>BullBull Unpacker</FileDescription>
+    <Company>Tak1</Company>
+    <Copyright>Copyright (c) 2026 Tak1</Copyright>
+    <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
+    <FileVersion>$(VersionPrefix).0</FileVersion>
+  </PropertyGroup>
+
+  <!-- 六个 csproj 逐字重复过的三项收到一处；AssemblyName 与 RootNamespace 各项目不同，留在各自文件里 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!-- 发布形态由构建注入：会话头要能区分 AOT 与框架依赖两种产物 -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <DefineConstants>$(DefineConstants);BBU_AOT</DefineConstants>
+  </PropertyGroup>
+
+  <!-- 三个构建期门禁开关：告警与风格在构建期即错。
+       唯一例外 NU1900 是取不到包漏洞数据时的环境警告，与代码无关。 -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>NU1900</WarningsNotAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,664 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:t="clr-namespace:Bbu.Core.Texts;assembly=Bbu.Core"
+        xmlns:v="clr-namespace:Bbu.Ui.Avalonia.Views"
+        x:Class="Bbu.Ui.Avalonia.Views.MainWindow"
+        Title="{x:Static t:Ui.ProductName}"
+        Icon="/Assets/bbu.ico"
+        Width="1160" Height="660"
+        MinWidth="700" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="{DynamicResource Sans}"
+        FontSize="{DynamicResource FsBody}"
+        Foreground="{DynamicResource Text}"
+        Background="{DynamicResource Bg}"
+        SystemDecorations="None"
+        CanResize="True"
+        RequestedThemeVariant="Dark">
+
+  <!-- 无边框窗口：不自绘圆角、不用半透明背景（半透明表面上只能灰度抗锯齿，字会发糊）
+       —— 圆角交给 DWM 的 DWMWA_WINDOW_CORNER_PREFERENCE，见 Interop/WindowChrome.cs -->
+  <Border Name="Root" Background="{DynamicResource Bg}">
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+      <!-- ══════════════════ 顶栏 44px（app.css .topbar） ══════════════════ -->
+      <Border Name="TopBar" Grid.Row="0"
+              Height="{DynamicResource HTopBar}"
+              Background="{DynamicResource Surface}"
+              BorderBrush="{DynamicResource Border}"
+              BorderThickness="0,0,0,1"
+              Padding="{DynamicResource PadTopBar}">
+        <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+
+          <!-- 品牌：应用图标 + 产品名 + 版本号。图标取应用自身的资源（Assets\bbu-logo.png，
+               由 bbu.ico 的最大帧导出）；界面里的功能图标仍是纯矢量。 -->
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Image Width="20" Height="20" Source="/Assets/bbu-logo.png" VerticalAlignment="Center"/>
+            <TextBlock Text="{x:Static t:Ui.ProductName}" FontSize="{DynamicResource FsBrand}" FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+            <Border Background="{DynamicResource Surface2}" CornerRadius="{DynamicResource Rsm}"
+                    Padding="4,1" VerticalAlignment="Center">
+              <TextBlock Name="VersionChip" Text="" FontSize="{DynamicResource FsSmall}"
+                         Foreground="{DynamicResource Faint}" VerticalAlignment="Center"/>
+            </Border>
+          </StackPanel>
+
+          <!-- 进度构成条 .pbar：六个状态各占一段，段宽由代码按计数推进；条本身弹性收缩。
+               六个图例收进这一条的提示里 —— 摆成一排会把右侧动作区顶出可视区（B-2026-121）。
+               MinWidth 60 的判据：条弹性收缩的下限。它随 B-2026-121 一起定：窗口最窄时右侧动作区与三个系统按钮
+               不许被挤出可视区（上限 330 是给动作区让位）。 -->
+          <Grid Grid.Column="1" ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="16,0"
+                VerticalAlignment="Center">
+            <Border Grid.Column="0" Name="ProgTrack" Height="6" CornerRadius="3"
+                    MinWidth="60" MaxWidth="330" HorizontalAlignment="Stretch"
+                    Background="{DynamicResource Surface2}" ClipToBounds="True">
+              <!-- 段宽按计数占比，比例交给星号列；未完成的两档固定在右边）。 -->
+              <Grid Name="ProgSegs" ColumnDefinitions="0*,0*,0*,0*,0*,0*">
+                <Border Name="ProgSegDone" Grid.Column="0" Classes="pfill"
+                        Background="{DynamicResource Ok}"/>
+                <Border Name="ProgSegPartial" Grid.Column="1" Classes="pfill"
+                        Background="{DynamicResource Warn}"/>
+                <Border Name="ProgSegSkipped" Grid.Column="2" Classes="pfill"
+                        Background="{DynamicResource Warn}"/>
+                <Border Name="ProgSegFailed" Grid.Column="3" Classes="pfill"
+                        Background="{DynamicResource Err}"/>
+                <Border Name="ProgSegRunning" Grid.Column="4" Classes="pfill"
+                        Background="{DynamicResource Accent}"/>
+                <Border Name="ProgSegQueued" Grid.Column="5" Classes="pfill"
+                        Background="{DynamicResource Dim}"/>
+              </Grid>
+            </Border>
+            <TextBlock Grid.Column="1" Name="ProgCount" Classes="lvl-info"
+                       FontSize="{DynamicResource FsSmall}" Text=""
+                       VerticalAlignment="Center"/>
+          </Grid>
+
+          <!-- 右侧动作区：密码本 / 设置 / 主题 / 关于 / 三个窗口按钮 -->
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button Name="BtnLibrary" Classes="bb iconbtn hit"
+                    AutomationProperties.Name="{x:Static t:Ui.PasswordBook}"
+                    ToolTip.Tip="{x:Static t:Ui.PasswordBook}">
+              <!-- 钥匙：这一页管的是钥匙（docx 9） -->
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Key}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+            </Button>
+            <Button Name="BtnSettings" Classes="bb iconbtn hit"
+                    AutomationProperties.Name="{x:Static t:Ui.Settings}"
+                    ToolTip.Tip="{x:Static t:Ui.Settings}">
+              <!-- 齿轮：六个梯形齿的齿廓加中心轴孔。原先的图形由一个圆与八根放射线组成，与太阳形近（docx 9） -->
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Gear}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+            </Button>
+            <!-- 功能图标之间不再夹分隔线：删除主题按钮后这三个属同一组（docx 9）；
+                 与三个窗口按钮之间的分隔线保留，用于划分程序功能与窗口动作。 -->
+            <Button Name="BtnAbout" Classes="bb iconbtn hit"
+                    AutomationProperties.Name="{x:Static t:Ui.About}"
+                    ToolTip.Tip="{x:Static t:Ui.About}">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Info}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+            </Button>
+            <Border Width="1" Height="20" Background="{DynamicResource Border}" Margin="4,0"/>
+            <Button Name="BtnMin" Classes="bb cap iconbtn hit"
+                    AutomationProperties.Name="{x:Static t:Ui.Minimize}"
+                    ToolTip.Tip="{x:Static t:Ui.Minimize}">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Minimize}" Stroke="{Binding $parent[Button].Foreground}"/>
+            </Button>
+            <Button Name="BtnMax" Classes="bb cap iconbtn hit"
+                    AutomationProperties.Name="{x:Static t:Ui.Maximize}"
+                    ToolTip.Tip="{x:Static t:Ui.Maximize}">
+              <Path Name="MaxGlyph" Classes="ic lucide" Data="{x:Static v:Icons.Maximize}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+            </Button>
+            <Button Name="BtnClose" Classes="bb cap iconbtn hit close"
+                    AutomationProperties.Name="{x:Static t:Ui.Close}"
+                    ToolTip.Tip="{x:Static t:Ui.Close}">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Close}" Stroke="{Binding $parent[Button].Foreground}"/>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- ══════════════════ 工具条 36px（app.css .toolrow） ══════════════════ -->
+      <Border Grid.Row="1"
+              Height="{DynamicResource HToolRow}"
+              Background="{DynamicResource Surface}"
+              BorderBrush="{DynamicResource Border}"
+              BorderThickness="0,0,0,1"
+              Padding="{DynamicResource PadToolRow}">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
+          <TextBlock Name="TxtCount" Grid.Column="0" Text=""
+                     FontSize="{DynamicResource FsSmall}" Foreground="{DynamicResource Dim}"
+                     VerticalAlignment="Center" Margin="0,0,12,0"/>
+
+          <!-- 次要操作：全选、移除选中、清空列表。
+               紧凑形下文字收起来只留图标；提示文字仍由 AutomationProperties 给。 -->
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button Name="BtnSelectAll" Classes="bb tbtn"
+                    AutomationProperties.Name="{x:Static t:Ui.SelectAll}"
+                    ToolTip.Tip="{x:Static t:Ui.SelectAll}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.SelectAll}"
+                      Stroke="{Binding $parent[Button].Foreground}"/>
+                <TextBlock Name="TxtSelectAll" Text="{x:Static t:Ui.SelectAll}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button Name="BtnRemoveSelected" Classes="bb tbtn" IsEnabled="False"
+                    AutomationProperties.Name="{x:Static t:Ui.RemoveSelected}"
+                    ToolTip.Tip="{x:Static t:Ui.RemoveSelected}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.RemoveSelected}"
+                      Stroke="{Binding $parent[Button].Foreground}"/>
+                <TextBlock Name="TxtRemoveSelected" Text="{x:Static t:Ui.RemoveSelected}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button Name="BtnClearList" Classes="bb tbtn" IsEnabled="False"
+                    AutomationProperties.Name="{x:Static t:Ui.ClearList}"
+                    ToolTip.Tip="{x:Static t:Ui.ClearList}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.ClearList}"
+                      Stroke="{Binding $parent[Button].Foreground}"/>
+                <TextBlock Name="TxtClearList" Text="{x:Static t:Ui.ClearList}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+          </StackPanel>
+
+          <!-- 筛选与顶栏那条进度构成条同列：两者是一件事的两半，
+               原先挂在工具条最右侧，与构成条隔着一条工具条。 -->
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                      HorizontalAlignment="Left" Margin="8,0,0,0">
+            <Border Classes="vsep"/>
+            <ToggleButton Name="SegAll" Classes="seg" IsChecked="True"
+                          AutomationProperties.Name="{x:Static t:Ui.FilterAll}"
+                          ToolTip.Tip="{x:Static t:Ui.FilterAll}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.FilterAll}"
+                      Stroke="{Binding $parent[ToggleButton].Foreground}"/>
+                <TextBlock Name="TxtSegAll" Text="{x:Static t:Ui.FilterAll}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </ToggleButton>
+            <ToggleButton Name="SegFail" Classes="seg"
+                          AutomationProperties.Name="{x:Static t:Ui.FilterFailedOnly}"
+                          ToolTip.Tip="{x:Static t:Ui.FilterFailedOnly}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.FilterFailed}"
+                      Stroke="{Binding $parent[ToggleButton].Foreground}"/>
+                <TextBlock Name="TxtSegFail" Text="{x:Static t:Ui.FilterFailedOnly}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </ToggleButton>
+          </StackPanel>
+
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+            <Button Name="BtnAdd" Classes="bb tbtn" AutomationProperties.Name="{x:Static t:Ui.AddFiles}"
+                    ToolTip.Tip="{x:Static t:Ui.AddFiles}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.AddFiles}"
+                      Stroke="{Binding $parent[Button].Foreground}"/>
+                <TextBlock Name="TxtAdd" Text="{x:Static t:Ui.AddFiles}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+            <Button Name="BtnAddDir" Classes="bb tbtn" AutomationProperties.Name="{x:Static t:Ui.AddFolder}"
+                    ToolTip.Tip="{x:Static t:Ui.AddFolder}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <Path Classes="ic lucide" Data="{x:Static v:Icons.AddFolder}"
+                      Stroke="{Binding $parent[Button].Foreground}"/>
+                <TextBlock Name="TxtAddDir" Text="{x:Static t:Ui.AddFolder}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- ══════════════════ 主体：任务表 + 日志侧栏 ══════════════════
+           两档由代码切换：宽档两列并排，中档单列且日志折成底部面板。 -->
+      <Grid Grid.Row="2" Name="Body" ColumnDefinitions="*,420">
+
+        <!-- ── 任务表：表头 28，行高 32 ── -->
+        <Grid Grid.Column="0" Name="TaskArea" RowDefinitions="Auto,*">
+          <Border Classes="lhead" Grid.Row="0">
+            <Panel Name="HeadArea" ClipToBounds="True">
+              <Panel.ContextMenu>
+                <ContextMenu Name="HeadMenu">
+                  <MenuItem Name="MenuFitOne" Header="{x:Static t:Ui.ColumnFitOne}"/>
+                  <Separator/>
+                  <MenuItem Name="MenuFitAll" Header="{x:Static t:Ui.ColumnFitAll}"/>
+                  <MenuItem Name="MenuReset" Header="{x:Static t:Ui.ColumnReset}"/>
+                </ContextMenu>
+              </Panel.ContextMenu>
+
+              <!-- 表头：与列内容同字号、取次级色，靠列间实线拉开层次，表头四列均居中；不加粗（看图反馈）。 -->
+              <Grid Name="HeadCols" ColumnDefinitions="56,308,170,160">
+                <Border Grid.Column="0" BorderBrush="{DynamicResource Border2}" BorderThickness="0,0,1,0">
+                  <TextBlock Name="HeadKind" Text="{x:Static t:Ui.ColumnKind}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             FontSize="{DynamicResource FsBody}" Foreground="{DynamicResource Dim}"/>
+                </Border>
+                <Border Grid.Column="1" BorderBrush="{DynamicResource Border2}" BorderThickness="0,0,1,0">
+                  <TextBlock Name="HeadFile" Text="{x:Static t:Ui.ColumnFile}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             FontSize="{DynamicResource FsBody}" Foreground="{DynamicResource Dim}"/>
+                </Border>
+                <Border Grid.Column="2" BorderBrush="{DynamicResource Border2}" BorderThickness="0,0,1,0">
+                  <TextBlock Name="HeadPassword" Text="{x:Static t:Ui.ColumnPassword}"
+                             ToolTip.Tip="{x:Static t:Ui.CopyPasswordTip}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             FontSize="{DynamicResource FsBody}" Foreground="{DynamicResource Dim}"/>
+                </Border>
+                <TextBlock Name="HeadStatus" Grid.Column="3" Text="{x:Static t:Ui.ColumnStatus}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontSize="{DynamicResource FsBody}" Foreground="{DynamicResource Dim}"/>
+              </Grid>
+
+              <!-- 三个把手压在列边界上：拖动改宽度，双击按内容自适应 -->
+              <Canvas Name="HeadSplit">
+                <Thumb Name="Split0" Classes="colsplit" Height="28" Cursor="SizeWestEast"
+                       AutomationProperties.Name="{x:Static t:Ui.ColumnFitOne}"/>
+                <Thumb Name="Split1" Classes="colsplit" Height="28" Cursor="SizeWestEast"
+                       AutomationProperties.Name="{x:Static t:Ui.ColumnFitOne}"/>
+                <Thumb Name="Split2" Classes="colsplit" Height="28" Cursor="SizeWestEast"
+                       AutomationProperties.Name="{x:Static t:Ui.ColumnFitOne}"/>
+              </Canvas>
+            </Panel>
+          </Border>
+
+          <ScrollViewer Grid.Row="1" Name="ListScroll" HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <Panel>
+              <StackPanel Name="RowHost"/>
+
+              <!-- 空状态（app.css .empty）：与任务表共用同一个槽位 -->
+              <StackPanel Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Spacing="8" Margin="0">
+                <Border Width="44" Height="44" CornerRadius="{DynamicResource Rlg}" BorderThickness="1.5"
+                        BorderBrush="{DynamicResource Border2}" HorizontalAlignment="Center">
+                  <Path Classes="ic lucide" Data="{x:Static v:Icons.DropHint}"
+                        Stroke="{DynamicResource Faint}"/>
+                </Border>
+                <TextBlock Text="{x:Static t:Ui.EmptyTitle}" FontSize="{DynamicResource FsTitle}"
+                           FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <TextBlock Text="{x:Static t:Ui.EmptyOr}" FontSize="{DynamicResource FsSmall}"
+                           Foreground="{DynamicResource Faint}" HorizontalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                  <Button Name="BtnAdd2" Classes="bb btn"
+                          AutomationProperties.Name="{x:Static t:Ui.AddFiles}"
+                          Content="{x:Static t:Ui.AddFiles}"/>
+                  <Button Name="BtnAddDir2" Classes="bb btn"
+                          AutomationProperties.Name="{x:Static t:Ui.AddFolder}"
+                          Content="{x:Static t:Ui.AddFolder}"/>
+                </StackPanel>
+                <TextBlock Text="{x:Static t:Ui.EmptyHint}"
+                           Foreground="{DynamicResource Dim}" FontSize="{DynamicResource FsSmall}"
+                           MaxWidth="360" TextWrapping="Wrap" TextAlignment="Center"/>
+              </StackPanel>
+
+              <!-- 拖入时的放置提示：虚线框加一句话，放开即收起。
+                   那句话按状态换，写的是松手之后真会发生的事。 -->
+              <Border Name="DropZone" Classes="dropzone" IsVisible="False" Margin="10">
+                <TextBlock Name="DropHintText" Text="{x:Static t:Ui.DropHint}" FontSize="{DynamicResource FsTitle}"
+                           FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </Panel>
+          </ScrollViewer>
+        </Grid>
+
+        <!-- ── 日志侧栏（app.css .side / .activity / .logpanel） ──
+             宽档并排、中档落到主体第二行；日志头部与滚动区折进一个容器，展开由高度上限带动画，
+             进度不进面板，只在右栏活动槽里。 -->
+        <!-- 当前活动：标题恒为这一句，变化的只是内容；名称与运行细节并排。 -->
+        <Grid Grid.Column="1" Name="Side" RowDefinitions="Auto,*" Background="{DynamicResource Surface}">
+          <Border Grid.Row="0" Name="ActivityCard"
+                  Background="{DynamicResource Surface}"
+                  BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,1"
+                  Padding="12" MinHeight="88">
+            <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Name="ActTitle" Text="" FontSize="{DynamicResource FsSmall}"
+                             Foreground="{DynamicResource Dim}" VerticalAlignment="Center"/>
+                  <!-- 折叠开关只在单列那两档出现：宽档的日志恒显，没有可折叠的面板。 -->
+                  <Button Grid.Column="1" Name="LogToggle" Classes="bb tbtn" IsVisible="False"
+                          AutomationProperties.Name="{x:Static t:Ui.LogExpand}"
+                          ToolTip.Tip="{x:Static t:Ui.LogExpand}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Name="TxtLogToggle" Text="{x:Static t:Ui.LogExpand}"
+                                 FontSize="{DynamicResource FsSmall}" VerticalAlignment="Center"/>
+                      <Path Name="LogToggleGlyph" Classes="ic lucide" Data="{x:Static v:Icons.ChevronDown}"
+                            Stroke="{Binding $parent[Button].Foreground}"/>
+                    </StackPanel>
+                  </Button>
+                </Grid>
+
+                <!-- 运行行：左是这一批在跑哪个包，右是层级刻度与层号。两者同行，长名字走省略号。 -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBlock Grid.Column="0" Name="ActName" Text="" FontSize="{DynamicResource FsSmall}"
+                             Foreground="{DynamicResource Dim}" TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" IsVisible="False"/>
+                  <StackPanel Grid.Column="1" Name="ActLive" Orientation="Horizontal" Spacing="8"
+                              VerticalAlignment="Center" IsVisible="False">
+                    <StackPanel Name="ActTicks" Orientation="Horizontal" Spacing="2"
+                                VerticalAlignment="Center"/>
+                    <TextBlock Name="ActLayer" Classes="lvl-accent" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Grid>
+
+                <!-- 正在做什么：这一句长短随时在变，所以单独一行并截断，不挤上面那一行。
+                     级别类由代码按这一条进度挂（引擎中档、密码枚举提示档），标记里不写死前景色。 -->
+                <TextBlock Name="ActDoing" Classes="lvl-info" FontSize="{DynamicResource FsSmall}"
+                           IsVisible="False" TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center"/>
+                <!-- 折叠面板头部的那一行摘要：收起时它是这一块唯一的内容。 -->
+                <TextBlock Name="FoldSummary" Text="" FontSize="{DynamicResource FsSmall}"
+                           Foreground="{DynamicResource Dim}" TextTrimming="CharacterEllipsis"
+                           IsVisible="False"/>
+                <TextBlock Name="ActSummary" Text="" FontSize="{DynamicResource FsSmall}"
+                           Foreground="{DynamicResource Dim}" TextWrapping="Wrap" IsVisible="False"/>
+            </StackPanel>
+          </Border>
+
+          <Grid Grid.Row="1" Name="LogPanel" Classes="logpanel" RowDefinitions="Auto,*">
+          <Border Grid.Row="0" Name="LogHead" Height="{DynamicResource HLogHead}"
+                  BorderBrush="{DynamicResource Border}" BorderThickness="1,0,0,1"
+                  Padding="12,0">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" VerticalAlignment="Center">
+              <TextBlock Grid.Column="0" Text="{x:Static t:Ui.LogTitle}" Foreground="{DynamicResource Dim}"
+                         FontSize="{DynamicResource FsSmall}" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" Name="LogStatus" Text="" Foreground="{DynamicResource Faint}"
+                         FontSize="{DynamicResource FsSmall}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+              <ToggleButton Grid.Column="3" Name="ChkFollow" Classes="chk" IsChecked="True"
+                            AutomationProperties.Name="{x:Static t:Ui.LogFollow}"
+                            Content="{x:Static t:Ui.LogFollow}"
+                            VerticalAlignment="Center"/>
+              <ToggleButton Grid.Column="4" Name="BtnErrOnly" Classes="seg" Margin="8,0,0,0"
+                            AutomationProperties.Name="{x:Static t:Ui.LogErrorsOnly}"
+                            Content="{x:Static t:Ui.LogErrorsOnly}"
+                            VerticalAlignment="Center"/>
+              <Button Grid.Column="5" Name="BtnClearLog" Classes="bb tbtn" Margin="8,0,0,0"
+                      AutomationProperties.Name="{x:Static t:Ui.LogClear}"
+                      Content="{x:Static t:Ui.LogClear}"
+                      VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+
+          <ScrollViewer Grid.Row="1" Name="LogScroll"
+                        Background="{DynamicResource LogBg}"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Name="LogHost" Margin="12,8" Spacing="0"/>
+          </ScrollViewer>
+
+          </Grid>
+        </Grid>
+      </Grid>
+
+      <!-- ══════════════════ 底栏 52px（app.css .actionbar） ══════════════════ -->
+      <Border Grid.Row="3"
+              Height="{DynamicResource HActionBar}"
+              Background="{DynamicResource Surface}"
+              BorderBrush="{DynamicResource Border}"
+              BorderThickness="0,1,0,0"
+              Padding="{DynamicResource PadActionBar}">
+        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
+          <!-- 三个主操作固定在左侧，永远可见、永远带文字。
+               紧凑形只收次要动作，这三个的文字在两档下都不许收。 -->
+          <Button Grid.Column="0" Name="BtnStart" Classes="bb btn solid" IsEnabled="False"
+                  AutomationProperties.Name="{x:Static t:Ui.Start}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Start}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+              <TextBlock Name="TxtStart" Text="{x:Static t:Ui.Start}" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="1" Name="BtnPause" Classes="bb btn" IsEnabled="False" Margin="8,0,0,0"
+                  AutomationProperties.Name="{x:Static t:Ui.Pause}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Pause}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+              <TextBlock Name="TxtPause" Text="{x:Static t:Ui.Pause}" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="2" Name="BtnStop" Classes="bb btn" IsEnabled="False" Margin="8,0,0,0"
+                  AutomationProperties.Name="{x:Static t:Ui.Stop}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Stop}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+              <TextBlock Name="TxtStop" Text="{x:Static t:Ui.Stop}" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+
+          <!-- 产物语境的两个入口排在右侧：它插在开始与暂停之间时会被读成第四个主操作，
+               实际属于"看产物"一类。紧凑形只保留摘要段。 -->
+          <Button Grid.Column="4" Name="BtnOutSum" Classes="bb outsum"
+                  AutomationProperties.Name="{x:Static t:Ui.OutputLabel}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{x:Static t:Ui.OutputLabel}" Foreground="{DynamicResource Faint}"
+                         VerticalAlignment="Center"/>
+              <!-- 两个值不写前景色：只读的事实跟随按钮自己的档位（默认 Dim、悬停抬到 Text）。 -->
+              <TextBlock Name="TxtOutMode" Text="" VerticalAlignment="Center"/>
+              <Border Name="OutSumSep" Width="1" Height="12" Background="{DynamicResource Border2}"/>
+              <TextBlock Name="OutConflictLabel" Text="{x:Static t:Ui.ConflictLabel}"
+                         Foreground="{DynamicResource Faint}" VerticalAlignment="Center"/>
+              <TextBlock Name="TxtOutConflict" Text="" VerticalAlignment="Center"/>
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.ChevronDown}"
+                    Stroke="{Binding $parent[Button].Foreground}" Margin="2,0,0,0"/>
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="5" Name="BtnOpenOut" Classes="bb btn" IsEnabled="False" Margin="8,0,0,0"
+                  AutomationProperties.Name="{x:Static t:Ui.OpenOutputDir}"
+                  ToolTip.Tip="{x:Static t:Ui.OpenOutputDir}">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.OpenOutput}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+              <TextBlock Name="TxtOpenOut" Text="{x:Static t:Ui.OpenOutputDir}" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- 8 条缩放热区：无边框窗口没有 WS_THICKFRAME，四边四角自己接 BeginResizeDrag。
+           放在浮层**之前**：浮层一开就盖住热区，模态期间不允许从边缘拖窗口。 -->
+      <Panel Grid.Row="0" Grid.RowSpan="4" Name="ResizeGrips">
+        <Border Name="GripN"  Height="5" VerticalAlignment="Top"    Background="Transparent" Cursor="SizeNorthSouth"/>
+        <Border Name="GripS"  Height="5" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth"/>
+        <Border Name="GripW"  Width="5"  HorizontalAlignment="Left"  Background="Transparent" Cursor="SizeWestEast"/>
+        <Border Name="GripE"  Width="5"  HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast"/>
+        <Border Name="GripNW" Width="10" Height="10" HorizontalAlignment="Left"  VerticalAlignment="Top"    Background="Transparent" Cursor="TopLeftCorner"/>
+        <Border Name="GripNE" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top"    Background="Transparent" Cursor="TopRightCorner"/>
+        <Border Name="GripSW" Width="10" Height="10" HorizontalAlignment="Left"  VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner"/>
+        <Border Name="GripSE" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner"/>
+      </Panel>
+
+      <!-- ══════════════════ 浮层：关于 ══════════════════ -->
+      <Panel Grid.Row="0" Grid.RowSpan="4" Name="OverlayHost" IsVisible="False">
+        <Border Name="OverlayScrim" Classes="scrim"/>
+        <Border Name="OverlayModal" Classes="modal" Width="400"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Margin="0,0,0,40">
+          <Grid RowDefinitions="Auto,*">
+            <Border Grid.Row="0" Name="OverlayHead" Padding="12,8"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+              <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Name="OverlayTitle" Text="{x:Static t:Ui.About}"
+                           FontSize="{DynamicResource FsTitle}"
+                           FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Name="BtnOverlayClose" Classes="bb iconbtn"
+                        AutomationProperties.Name="{x:Static t:Ui.Close}"
+                        ToolTip.Tip="{x:Static t:Ui.Close}">
+                  <Path Classes="ic lucide" Data="{x:Static v:Icons.Close}"
+                        Stroke="{Binding $parent[Button].Foreground}"/>
+                </Button>
+              </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Spacing="14" Margin="16,14">
+              <StackPanel Spacing="10">
+                <Image Width="48" Height="48" HorizontalAlignment="Center" Source="/Assets/bbu-logo.png"/>
+                <Grid ColumnDefinitions="*,Auto,*">
+                  <TextBlock Grid.Column="1" Name="AboutProduct" Text="{x:Static t:Ui.ProductName}"
+                             FontSize="{DynamicResource FsDisplay}" FontWeight="SemiBold"
+                             Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                  <Border Grid.Column="2" HorizontalAlignment="Left" Margin="8,0,0,0"
+                          Background="{DynamicResource Surface2}" CornerRadius="{DynamicResource Rlg}"
+                          Padding="8,2" VerticalAlignment="Center">
+                    <TextBlock Name="AboutVersion" Text="" FontSize="{DynamicResource FsSmall}"
+                               Foreground="{DynamicResource Dim}"/>
+                  </Border>
+                </Grid>
+              </StackPanel>
+
+              <Border BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                      CornerRadius="{DynamicResource Rlg}">
+                <StackPanel>
+                  <Grid ColumnDefinitions="Auto,*" Margin="14,10">
+                    <TextBlock Grid.Column="0" Text="{x:Static t:Ui.AboutSevenZipLabel}"
+                               Foreground="{DynamicResource Dim}"/>
+                    <TextBlock Grid.Column="1" Name="AboutEngine" Text="" TextAlignment="Right"
+                               Foreground="{DynamicResource Dim}" TextWrapping="Wrap"/>
+                  </Grid>
+                  <Border Height="1" Background="{DynamicResource Border}"/>
+                  <Grid ColumnDefinitions="Auto,*" Margin="14,10">
+                    <TextBlock Grid.Column="0" Text="{x:Static t:Ui.AboutUnrarLabel}"
+                               Foreground="{DynamicResource Dim}"/>
+                    <TextBlock Grid.Column="1" Name="AboutUnrar" Text="" TextAlignment="Right"
+                               Foreground="{DynamicResource Dim}" TextWrapping="Wrap"/>
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button Grid.Column="0" Name="AboutRepo" Classes="bb btn"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="ic brand" Data="{x:Static v:Icons.Repo}"
+                          Fill="{Binding $parent[Button].Foreground}"/>
+                    <TextBlock Name="AboutRepoText" Text="{x:Static t:Ui.AboutOpenRepo}"/>
+                  </StackPanel>
+                </Button>
+                <Button Grid.Column="1" Name="AboutStore" Classes="bb btn"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="ic brand" Data="{x:Static v:Icons.Store}"
+                          Fill="{Binding $parent[Button].Foreground}"/>
+                    <TextBlock Name="AboutStoreText" Text="{x:Static t:Ui.AboutOpenStore}"/>
+                  </StackPanel>
+                </Button>
+              </Grid>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <TextBlock Name="AboutCopyright" Text="{x:Static t:Ui.AboutCopyright}"
+                             FontSize="{DynamicResource FsSmall}" Foreground="{DynamicResource Faint}"/>
+                  <TextBlock Text="{x:Static t:Ui.AboutMetaSeparator}"
+                             FontSize="{DynamicResource FsSmall}" Foreground="{DynamicResource Faint}"/>
+                  <Button Name="AboutLicense" Classes="bb link" VerticalAlignment="Center"
+                          AutomationProperties.Name="{x:Static t:Ui.AboutLicense}">
+                    <TextBlock Text="{x:Static t:Ui.AboutLicense}"
+                               FontSize="{DynamicResource FsSmall}" TextDecorations="Underline"/>
+                  </Button>
+                </StackPanel>
+                <Button Grid.Column="1" Name="BtnOverlayOk" Classes="bb btn primary" IsDefault="True"
+                        AutomationProperties.Name="{x:Static t:Ui.AboutClose}"
+                        Content="{x:Static t:Ui.AboutClose}"/>
+              </Grid>
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Panel>
+
+      <!-- ══════════════════ 浮层：输出设置（窗口内模态） ══════════════════ -->
+      <Panel Grid.Row="0" Grid.RowSpan="4" Name="OutPanel" IsVisible="False">
+        <Border Name="OutScrim" Classes="scrim"/>
+        <Border Name="OutModal" Classes="modal" Width="460" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <Grid RowDefinitions="Auto,*,Auto">
+            <Border Grid.Row="0" Padding="12"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+              <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="{x:Static t:Ui.OutputLabel}" FontSize="{DynamicResource FsTitle}"
+                           FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Button Grid.Column="2" Name="OutClose" Classes="bb iconbtn"
+                        AutomationProperties.Name="{x:Static t:Ui.Close}"
+                        ToolTip.Tip="{x:Static t:Ui.Close}">
+                  <Path Classes="ic lucide" Data="{x:Static v:Icons.Close}"
+                        Stroke="{Binding $parent[Button].Foreground}"/>
+                </Button>
+              </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Spacing="8" Margin="16,12">
+              <RadioButton Name="OutSame" GroupName="omode" IsChecked="True"
+                           Content="{x:Static t:Ui.OutputSameDir}"/>
+              <RadioButton Name="OutCustom" GroupName="omode"
+                           Content="{x:Static t:Ui.OutputCustomDir}"/>
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBox Grid.Column="0" Name="OutDirBox" Height="{DynamicResource HInput}"
+                         Watermark="{x:Static t:Ui.OutputCustomDir}"/>
+                <Button Grid.Column="1" Name="OutBrowse" Classes="bb btn" Margin="8,0,0,0"
+                        AutomationProperties.Name="{x:Static t:Ui.Browse}"
+                        Content="{x:Static t:Ui.Browse}"/>
+              </Grid>
+              <TextBlock Text="{x:Static t:Ui.ConflictLabel}" FontSize="{DynamicResource FsSmall}"
+                         Foreground="{DynamicResource Faint}" Margin="0,4,0,0"/>
+              <ComboBox Name="OutConflict" Height="{DynamicResource HInput}" HorizontalAlignment="Left"
+                        MinWidth="220">
+                <ComboBoxItem Content="{x:Static t:Ui.ConflictRenumber}"/>
+                <ComboBoxItem Content="{x:Static t:Ui.ConflictOverwrite}"/>
+                <ComboBoxItem Content="{x:Static t:Ui.ConflictSkip}"/>
+              </ComboBox>
+            </StackPanel>
+
+            <Border Grid.Row="2" Padding="16,12"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
+              <!-- 保存排在取消左边（p030）：主要动作靠左，取消收在右端。 -->
+              <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Name="OutSave" Classes="bb btn primary" IsDefault="True"
+                        AutomationProperties.Name="{x:Static t:Ui.Save}"
+                        Content="{x:Static t:Ui.Save}"/>
+                <Button Name="OutCancel" Classes="bb btn"
+                        AutomationProperties.Name="{x:Static t:Ui.Cancel}"
+                        Content="{x:Static t:Ui.Cancel}"/>
+              </StackPanel>
+            </Border>
+          </Grid>
+        </Border>
+      </Panel>
+
+      <!-- ══════════════════ 浮窗：设置 / 密码本（窗口内居中，同一时刻只开一个） ══════════════════
+           不是整页、也不是右侧抽屉。宽度随页面换，上限由宿主按窗口的 78%×82% 压；
+           遮罩压暗主界面，点遮罩不关 —— 这两页都是改完即存，误关的代价比多按一次 Esc 大。 -->
+      <Panel Grid.Row="0" Grid.RowSpan="4" Name="PopupHost" IsVisible="False">
+        <Border Name="PopupScrim" Classes="scrim"/>
+        <Border Name="PopupCard" Classes="popup" Width="{DynamicResource WPopupSettings}">
+          <Panel>
+            <v:LibraryPage Name="LibPage" IsVisible="False"/>
+            <v:SettingsPage Name="SetPage" IsVisible="False"/>
+          </Panel>
+        </Border>
+      </Panel>
+
+      <!-- ══════════════════ 浮窗：需要密码（窗口内模态，阻塞） ══════════════════ -->
+      <Panel Grid.Row="0" Grid.RowSpan="4" Name="PwHost" IsVisible="False">
+        <Border Name="PwScrim" Classes="scrim"/>
+        <Border Name="PwModal" Classes="modal" Width="460"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+          <v:PasswordDialog Name="AskPassword"/>
+        </Border>
+      </Panel>
+
+      <!-- ══════════════════ 浮层：确认框（删除密码 / 关窗，层叠顺序最上） ══════════════════
+           锚点与另外四个宿主同一套：漏了 RowSpan 就落进 44 高的顶栏那一行，
+           遮罩只剩顶上一横条、卡片也被那一行夹住（B-2026-131）。 -->
+      <v:ConfirmPrompt Name="Ask" Grid.Row="0" Grid.RowSpan="4"/>
+
+      <!-- 提示条：宽度钉在任务表那一格上（根 Grid 只有一列，所以定位靠绑定而不是靠列），
+            于是它居中于任务表而不是整个窗口；声明在所有浮层之后，所以它压在最上面
+            （设置页与密码本页内部也会触发提示，被遮罩盖住就等于没提示）。
+            位置与命中策略在 ToastHost 自身。 -->
+      <Panel Grid.Row="2" Name="ToastLayer" HorizontalAlignment="Left"
+             Width="{Binding #TaskArea.Bounds.Width}">
+        <v:ToastHost Name="Toasts"/>
+      </Panel>
+
+    </Grid>
+  </Border>
+
+</Window>

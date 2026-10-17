@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX 清单模板。两种版本共用这一份，占位符在打包时替换。
+
+  占位符：
+    {{PACKAGE_NAME}}  包族名
+    {{PUBLISHER}}     发布者，必须与签名证书的 subject 逐字段一致
+    {{PUBLISHER_DISPLAY_NAME}}  发布者显示名，出处是 Directory.Build.props 的 BbuPublisherDisplayName
+    {{VERSION}}       四段纯数字，MSIX 不接受 -beta 这类后缀
+    {{CLSID}}         原生组件的 CLSID，出处是 src\Bbu.ShellExt\ShellExt.h 的 BBU_CLSID_TEXT
+
+  身份三属性与显示名都不写死在这里：模板留占位符，取值与「唯一出处」见 src\Bbu.App\app.manifest 的注释。
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  xmlns:desktop9="http://schemas.microsoft.com/appx/manifest/desktop/windows10/9"
+  xmlns:virtualization="http://schemas.microsoft.com/appx/manifest/virtualization/windows10"
+  IgnorableNamespaces="uap uap3 uap10 rescap com desktop desktop4 desktop5 desktop6 desktop9 virtualization">
+
+  <Identity Name="{{PACKAGE_NAME}}"
+            Publisher="{{PUBLISHER}}"
+            Version="{{VERSION}}"
+            ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>BullBull Unpacker</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <!-- 文件系统写入不虚拟化：默认会把 `%APPDATA%` 重定向到包容器，程序报的数据目录与真实落点
+         因此不是同一个（设置页的「打开」按钮指向不存在的路径），而且卸载包会连着
+         用户数据一起删。两套写法都留着：下面第一条是旧语法，保 2004 之前的系统，
+         与 Capabilities 的 unvirtualizedResources 成对出现；第二条是新语法，Win11 起生效，
+         把范围从「关掉这一档全部虚拟化」缩成「只豁免程序自己的两个位置」。 -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+    <virtualization:FileSystemWriteVirtualization>
+      <virtualization:ExcludedDirectories>
+        <virtualization:ExcludedDirectory>$(KnownFolder:RoamingAppData)\BullBullUnpacker</virtualization:ExcludedDirectory>
+        <virtualization:ExcludedDirectory>$(KnownFolder:LocalAppData)\BullBullUnpacker</virtualization:ExcludedDirectory>
+      </virtualization:ExcludedDirectories>
+    </virtualization:FileSystemWriteVirtualization>
+  </Properties>
+
+  <Dependencies>
+    <!-- MaxVersionTested 要高于 10.0.21300.0，否则 desktop9 那段声明被忽略 -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="zh-CN" />
+  </Resources>
+
+  <Applications>
+    <!-- 完整包用 FullTrustApplication：win32App 那一套是稀疏包专用，与 EntryPoint 互斥。
+         包内可执行名不带空格。 -->
+    <Application Id="App"
+                 Executable="BullBullUnpacker.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="BullBull Unpacker"
+                          Description="把压缩包加入清单，在窗口里开始解压"
+                          BackgroundColor="transparent"
+                          Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- 执行别名：包形态下程序本体在 WindowsApps 里，那个版本化路径受 ACL 保护、裸 CreateProcessW
+             起不动；别名经 AppModel 激活，路径又不随包更新变（直接执行包内 exe 的完整路径不带包身份，
+             数据目录会分成两份）。Win11 上也无害。 -->
+        <uap3:Extension Category="windows.appExecutionAlias"
+                          Executable="BullBullUnpacker.exe"
+                          EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="BullBullUnpacker.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+
+        <!-- 原生组件：新式菜单与经典菜单都由它实现，线程模型 STA -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="BullBull Unpacker 右键菜单">
+              <com:Class Id="{{CLSID}}" Path="Bbu.ShellExt.dll" ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <!-- 新式菜单：三档项类型与三处旧注册键同构 -->
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="BBUnpacker" Clsid="{{CLSID}}" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="BBUnpacker" Clsid="{{CLSID}}" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory\Background">
+              <desktop5:Verb Id="BBUnpacker" Clsid="{{CLSID}}" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+
+        <!-- 经典菜单：打包形态写不进 HKCU，只能靠这段声明 -->
+        <desktop9:Extension Category="windows.fileExplorerClassicContextMenuHandler">
+          <desktop9:FileExplorerClassicContextMenuHandler>
+            <desktop9:ExtensionHandler Type="*" Clsid="{{CLSID}}" />
+            <desktop9:ExtensionHandler Type="Directory" Clsid="{{CLSID}}" />
+            <desktop9:ExtensionHandler Type="Directory\Background" Clsid="{{CLSID}}" />
+          </desktop9:FileExplorerClassicContextMenuHandler>
+        </desktop9:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- 打包应用照常起自己的 exe、读写自己的数据目录，商店提交时要说明这一条的用途 -->
+    <rescap:Capability Name="runFullTrust" />
+    <!-- 上面那条 FileSystemWriteVirtualization 要靠它才生效；商店提交时同样要写明用途 -->
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+</Package>

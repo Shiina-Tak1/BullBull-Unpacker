@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <!-- Win32 SxS 清单的程序集身份：名字取产品名，不再是模板留下的 demo 名。
+       version 留在这里是有意的 —— 它是 PE 清单的静态字段，MSBuild 没有属性可填它；
+       产品版本的真身在 Directory.Build.props。 -->
+  <assemblyIdentity version="1.0.0.0" name="BullBullUnpacker" />
+
+  <!-- 少这一条，Windows 会走「安装程序检测」：清单里没有 requestedExecutionLevel 时它按文件名与命令行
+       推断，推断成立即给出受限令牌（低完整性）且不提示 UAC，此时连 HKCU 都写不进去，表现是
+       「注册右键菜单 0 处、错误码 5」。本程序从不提权，这里明确声明 asInvoker（B-2026-159）。 -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <!-- DPI：PerMonitorV2 —— demo 要在 100% / 150% / 200% 三档真机上截图。
+       不写这一条，进程默认是 System DPI aware，跨屏拖动不会重算缩放。 -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+
+  <!-- 包身份的唯一出处：下面三个属性是全仓仅有的那一份事实。
+       两个包清单模板（packaging\*.template）与两个打包脚本
+       都从这一份读，ShellExt.manifest 那份静态副本由 逐字段钉住 ——
+       改一处，四处同时变；哪一处留下字面量，「改一处三处同时变」就断在那里。
+       PublisherDisplayName 不在这里：SxS 清单的 msix 元素只认这三个属性，
+       它的出处是 Directory.Build.props 的 BbuPublisherDisplayName。
+
+       三个属性必须与包清单逐字段一致，否则注册成功而运行时拿不到身份（0x80073D54）。
+       完整包与稀疏包共用同一个 packageName：同一份 exe 只能声明一个身份，
+       两种包是同一产品的两条渠道，同名互斥（装一个顶掉另一个）。
+-->
+  <msix xmlns="urn:schemas-microsoft-com:msix.v1"
+        publisher="CN=E4C580E6-1D6E-4B8A-AC24-8EEF39E9F3FE"
+        packageName="Tak1.BullBullUnpacker"
+        applicationId="App" />
+</assembly>

@@ -1,0 +1,138 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       最小 token 集，数值取自 web 版 app.css 的取值，不自行设计。
+       ══════════════════════════════════════════════════════════════════ -->
+
+  <ResourceDictionary.ThemeDictionaries>
+
+    <!-- ① 午夜蓝 Midnight（app.css 的 :root / [data-theme="dark"]）
+         只留这一套：主题只留深色，浅色那一套（暖白 Paper）随之删除。
+         结构仍是"一套一份变量"，日后要加第二套照这一份复制即可，视图代码不动。 -->
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="Bg"            Color="#0F172A"/>
+      <SolidColorBrush x:Key="Surface"       Color="#1B2336"/>
+      <SolidColorBrush x:Key="Surface2"      Color="#272F42"/>
+      <SolidColorBrush x:Key="Raised"        Color="#212B40"/>
+      <SolidColorBrush x:Key="Border"        Color="#2F3A4F"/>
+      <SolidColorBrush x:Key="Border2"       Color="#3C4A63"/>
+      <SolidColorBrush x:Key="Hover"         Color="#222C42"/>
+      <!-- 主文字：原值 #F1F5F9 接近纯白、深底上对比过强；现取 #D2DAE4，与 Dim 和 Faint 之间留出可见的三档梯度。 -->
+      <SolidColorBrush x:Key="Text"          Color="#D2DAE4"/>
+      <SolidColorBrush x:Key="Dim"           Color="#94A3B8"/>
+      <!-- 悬停时的文字色：从 Dim 往上提一档，不是直接跳到最亮的 Text（那样一悬停就"闪白"）。 -->
+      <SolidColorBrush x:Key="Ink"           Color="#B8C4D4"/>
+      <!-- 元信息那一档：#64748B 与 Dim 的 #94A3B8 拉开一档，不与之同色。 -->
+      <SolidColorBrush x:Key="Faint"         Color="#64748B"/>
+      <SolidColorBrush x:Key="Accent"        Color="#38BDF8"/>
+      <SolidColorBrush x:Key="Ok"            Color="#22C55E"/>
+      <SolidColorBrush x:Key="Warn"          Color="#F59E0B"/>
+      <SolidColorBrush x:Key="Err"           Color="#F87171"/>
+      <SolidColorBrush x:Key="LogBg"         Color="#0B1220"/>
+      <SolidColorBrush x:Key="AccentInk"     Color="#08131F"/>
+      <!-- soft = color-mix(in srgb, <主色> 15%, transparent) → alpha 0x26 -->
+      <SolidColorBrush x:Key="AccentSoft"    Color="#2638BDF8"/>
+      <SolidColorBrush x:Key="OkSoft"        Color="#2622C55E"/>
+      <SolidColorBrush x:Key="WarnSoft"      Color="#26F59E0B"/>
+      <SolidColorBrush x:Key="ErrSoft"       Color="#26F87171"/>
+      <!-- soft 的深一档，给描边按钮的按下态：color-mix(in srgb, <主色> 30%, transparent) → alpha 0x4D。
+           取整口径是四舍五入：0.30×255 = 76.5 → 77；同类样本 ShadowMd 的 0x73（45%）同此口径。两条只作底色。 -->
+      <SolidColorBrush x:Key="AccentSoftDeep" Color="#4D38BDF8"/>
+      <SolidColorBrush x:Key="ErrSoftDeep"    Color="#4DF87171"/>
+      <!-- accent 的"亮一档 / 暗一档"：等价于 CSS 的 filter:brightness(1.08) 与按下态，
+           仍落在同一个色相上，不新造颜色 -->
+      <SolidColorBrush x:Key="AccentBright"  Color="#3DCCFF"/>
+      <SolidColorBrush x:Key="AccentDim"     Color="#34AEE4"/>
+      <SolidColorBrush x:Key="Scrim"         Color="#6B030712"/>
+      <!-- 全透明的黑：按钮常态底用它而不用 Transparent —— 后者是白透，插值时会经过半透明白。 -->
+      <SolidColorBrush x:Key="Clear"         Color="#00000000"/>
+      <!-- :focus-visible 的 outline（app.css 的 outline:2px solid var(‑‑accent)）。
+           用 BoxShadow 而不是 BorderThickness，因为 outline 不占布局 —— 2px 边框会把按钮挤变形。 -->
+      <BoxShadows x:Key="FocusRing">0 0 0 2 #38BDF8</BoxShadows>
+      <BoxShadows x:Key="FocusRingTight">0 0 0 1 #38BDF8</BoxShadows>
+      <BoxShadows x:Key="FocusRingInset">inset 0 0 0 2 #38BDF8</BoxShadows>
+      <BoxShadows x:Key="ShadowMd">0 10 30 0 #73000000</BoxShadows>
+      <BoxShadows x:Key="ShadowSm">0 2 8 0 #59000000</BoxShadows>
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- ═══════════ 与主题无关的 token ═══════════ -->
+
+  <!-- 间距梯度：4 / 8 / 12 / 16 / 24 这一档体系。
+       24 那一档给浮窗卡片之间与卡片内部的整块留白用。 -->
+  <x:Double x:Key="Sp4">4</x:Double>
+  <x:Double x:Key="Sp8">8</x:Double>
+  <x:Double x:Key="Sp12">12</x:Double>
+  <x:Double x:Key="Sp16">16</x:Double>
+  <x:Double x:Key="Sp24">24</x:Double>
+  <Thickness x:Key="PadTopBar">12,0</Thickness>
+  <Thickness x:Key="PadToolRow">12,0</Thickness>
+  <Thickness x:Key="PadRow">12,0</Thickness>
+  <Thickness x:Key="PadActionBar">12,0</Thickness>
+
+  <!-- 圆角：只留 3 档 -->
+  <CornerRadius x:Key="Rsm">4</CornerRadius>
+  <CornerRadius x:Key="Rmd">6</CornerRadius>
+  <CornerRadius x:Key="Rlg">8</CornerRadius>
+
+  <!-- 行高 / 栏高（逐字抄 app.css，这几条是"观感"的骨架，一个都不许改） -->
+  <x:Double x:Key="HTopBar">44</x:Double>
+  <x:Double x:Key="HToolRow">36</x:Double>
+  <x:Double x:Key="HListHead">28</x:Double>
+  <x:Double x:Key="HRow">32</x:Double>
+  <x:Double x:Key="HActionBar">52</x:Double>
+  <x:Double x:Key="HLogHead">32</x:Double>
+  <x:Double x:Key="HBtn">32</x:Double>
+  <x:Double x:Key="HBtnSm">24</x:Double>
+  <x:Double x:Key="HIconBtn">28</x:Double>
+  <x:Double x:Key="HInput">28</x:Double>
+  <x:Double x:Key="HOutSum">30</x:Double>
+
+  <!-- 图标按钮的命中区。视觉仍是 HIconBtn，可点范围补到这一档（无障碍要求）。 -->
+  <x:Double x:Key="HHitTarget">44</x:Double>
+
+  <!-- 浮窗的默认宽度。上限由代码按窗口的 78% 压。
+       设置页与密码本共用一张卡片，所以只有这一档；宽度下限见 WPopupMin。 -->
+  <x:Double x:Key="WPopupSettings">760</x:Double>
+
+  <!-- 浮窗的宽度下限。上限由代码按窗口的 78% 压。 -->
+  <x:Double x:Key="WPopupMin">320</x:Double>
+
+  <!-- 浮窗的固定高度（看图反馈：密码本有无内容都该是同一高度，逻辑也简化掉；
+       同日的要求再放大一些 —— 原来 480 显得压抑）。
+       500 在最小窗口 620 下仍低于上限 82%（508）。 -->
+  <x:Double x:Key="HPopupFixed">500</x:Double>
+
+  <!-- 设置项的最小高度：项内一行（标题在左、控件在右），44 够放下 28 的输入控件与上下各 8 的留白。
+       2026-10-06 起从 64 降下来 —— 说明副标题取消、项内改成一行，纵向密度随之提高。 -->
+  <x:Double x:Key="HSettingRow">44</x:Double>
+
+  <!-- 字号：三档加一个等宽专用档与一个浮层主名档，全部取整数；半号档会在一行里凑出两种几乎一样的大小。
+       页标题 14 / 浮层主名 16 / 正文与值 13 / 按钮与说明 12 / 日志等宽 12；11.5 与 13.5 两个半号档并入 12 与 14。 -->
+  <x:Double x:Key="FsBody">13</x:Double>
+  <x:Double x:Key="FsSmall">12</x:Double>
+  <x:Double x:Key="FsTitle">14</x:Double>
+  <x:Double x:Key="FsBrand">14</x:Double>
+  <x:Double x:Key="FsDisplay">16</x:Double>
+  <!-- 等宽域字号：只给日志面板的时间戳与正文。取 12，与 FsSmall 同值但语义独立 ——
+       等宽域的取值口径是 12 至 13，不跟着正文档走。 -->
+  <x:Double x:Key="FsMono">12</x:Double>
+  <x:Double x:Key="LhBody">1.5</x:Double>
+  <x:Double x:Key="LhLog">1.85</x:Double>
+
+  <!-- 动效：‑‑fast:120ms / ‑‑base:200ms / ‑‑slow:320ms
+       ‑‑ease-out:cubic-bezier(.22,.61,.36,1)   ‑‑ease-in:cubic-bezier(.55,.06,.68,.19)
+       KeySpline 就是 Avalonia 的 cubic-bezier —— 四个数一一对应，不是近似值。 -->
+  <!-- 时长不做成资源：Avalonia 的 XAML 里 TimeSpan 没法当资源解析（"Unable to resolve
+       type TimeSpan"），所以三档时长直接内联在 Controls.axaml 的 Duration="0:0:0.120"
+       这类写法里。这里留成注释，作为 token 的登记处。 -->
+  <!-- 曲线不放这里：KeySpline 当资源存进去会变成字符串，赋给 Animation.Easing 时 cast 失败。
+       改在 Theme/Motion.cs 里构造，XAML 用 {x:Static theme:Motion.EaseOut} 引用。 -->
+
+  <!-- 字体（app.css 的 ‑‑sans / ‑‑mono） -->
+  <FontFamily x:Key="Sans">Microsoft YaHei UI, Segoe UI, Microsoft YaHei</FontFamily>
+  <FontFamily x:Key="Mono">Cascadia Mono, Consolas, Courier New</FontFamily>
+
+</ResourceDictionary>

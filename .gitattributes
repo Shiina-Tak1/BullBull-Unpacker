@@ -1,0 +1,46 @@
+# 行尾与二进制标记
+
+# 默认文本 LF
+* text=auto eol=lf
+
+# 批处理 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.ico   binary
+*.gif   binary
+*.pdf   binary
+*.mp4   binary
+*.zip   binary
+*.7z    binary
+*.rar   binary
+*.gz    binary
+*.tgz   binary
+*.lz4   binary
+*.zst   binary
+*.tzst  binary
+*.tar   binary
+*.exe   binary
+*.dll   binary
+*.pdb   binary
+
+# 二进制：分卷后缀
+*.r0[0-9]       binary
+*.z0[0-9]       binary
+*.0[0-9][0-9]   binary
+
+# 目录：不做行尾转换
+src/Bbu.App/engines/**  -text
+
+# 随包说明页
+docs/public/README.html  -text
+
+# 语言统计
+dist/**    linguist-generated=true
+bin/**     linguist-generated=true
+obj/**     linguist-generated=true

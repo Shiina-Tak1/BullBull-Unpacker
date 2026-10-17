@@ -1,0 +1,32 @@
+<Project>
+
+  <!--
+    包版本的单一出处。六个 csproj 的 PackageReference 一律不写 Version —— 写在这里一处，
+    升包只改这一份。与 Directory.Build.props 把 TFM / Nullable / LangVersion 三项收到一处是同一件事。
+
+    打开 ManagePackageVersionsCentrally 之后，任何 csproj 里再出现 Version 属性都是构建错误（NU1008）：
+    版本不会有第二份。
+
+    这份清单必须随源码一起交付：3 个 src 与 3 个测试项目引用的包是本清单的子集，
+    缺了它编不出来。
+
+    Avalonia 一族的五个包同版本（Avalonia / Avalonia.Desktop / Avalonia.Themes.Fluent /
+    Avalonia.Diagnostics / Avalonia.Headless.XUnit，都是 11.3.22）；升包时五条一起动，
+    对外物料 docs\public\THIRD-PARTY-NOTICES.md 里写的版本号也要同步。
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="11.3.22" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.22" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="11.3.22" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+</Project>

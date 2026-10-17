@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Bbu.Ui.Tests</RootNamespace>
+    <AssemblyName>Bbu.Ui.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- 默认档（裸 dotnet test）排除慢档：edge / ledger / machine 用 filter 参数显式跑。
+-->
+    <VSTestTestCaseFilter>Category!=edge&amp;Category!=ledger&amp;Category!=machine</VSTestTestCaseFilter>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Avalonia.Headless.XUnit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Bbu.Ui.Avalonia\Bbu.Ui.Avalonia.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 并行口径只有一处：tests\xunit.runner.json。 -->
+    <None Include="..\xunit.runner.json" Link="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

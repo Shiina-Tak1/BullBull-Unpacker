@@ -1,0 +1,173 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="clr-namespace:Bbu.Core.Texts;assembly=Bbu.Core"
+             xmlns:v="clr-namespace:Bbu.Ui.Avalonia.Views"
+             x:Class="Bbu.Ui.Avalonia.Views.LibraryPage">
+
+  <UserControl.Styles>
+    <!-- 行高 32 是本页的判据：行容器与行内容取同一档，
+         并且把 ListBoxItem 的默认内边距压到行内边距那一档，否则一行会被撑到 32 以上。 -->
+    <Style Selector="ListBoxItem">
+      <Setter Property="Height" Value="{DynamicResource HRow}"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Padding" Value="{DynamicResource PadRow}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <!-- 浮窗内容层：底色与圆角由宿主的 Border.popup 出，这里必须透明 ——
+       自带整页底色会在圆角卡里再叠一层，四角露出与卡片不同的颜色。
+       进入与退出的 open 类由 PopupCard 承载，这里不再挂一次动画类，
+       否则自己的 Opacity 停在 0 上，页面根本看不见。 -->
+  <Border Name="LibCard">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+
+      <!-- 标题行：页名 + 条数（弱色小字）。条数放这里是为了不开列表也能看出本里有多少条。 -->
+      <Border Grid.Row="0" Padding="16,12" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+          <TextBlock Grid.Column="0" Text="{x:Static t:Ui.PasswordBook}" VerticalAlignment="Center"
+                     FontSize="{DynamicResource FsTitle}" FontWeight="SemiBold"/>
+          <TextBlock Grid.Column="1" Name="LibHeaderCount" Classes="faint" Margin="8,0,0,0"
+                     VerticalAlignment="Center"/>
+          <Button Grid.Column="3" Name="LibClose" Classes="bb iconbtn"
+                  AutomationProperties.Name="{x:Static t:Ui.Close}"
+                  ToolTip.Tip="{x:Static t:Ui.Close}">
+            <Path Classes="ic lucide" Data="{x:Static v:Icons.Close}"
+                  Stroke="{Binding $parent[Button].Foreground}"/>
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- 工具栏：搜索占满剩余宽度、是这一页的主视觉；三个动作按钮排在它右边做次级操作。
+           添加是次级操作，点开才出现输入行。
+           搜索框里那个放大镜只是说明这一格搜什么，它不可点：做成按钮会引出「点它做什么」
+           这个需要另行说明的问题。 -->
+      <Grid Grid.Row="1" Margin="16,12,16,0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+        <TextBox Grid.Column="0" Name="LibSearch" Height="{DynamicResource HInput}"
+                 Watermark="{x:Static t:Ui.LibrarySearchPlaceholder}">
+          <TextBox.InnerLeftContent>
+            <Path Classes="ic lucide" Data="{x:Static v:Icons.Search}" Margin="4,0,0,0"
+                  Stroke="{DynamicResource Faint}"/>
+          </TextBox.InnerLeftContent>
+          <!-- 行内清空：20 的圆，四边留 4 才不贴着框边（右侧会溢出）。 -->
+          <TextBox.InnerRightContent>
+            <Button Name="LibSearchClear" Classes="bb iconbtn" Width="20" Height="20" CornerRadius="10"
+                    Margin="0,0,4,0"
+                    AutomationProperties.Name="{x:Static t:Ui.Clear}"
+                    ToolTip.Tip="{x:Static t:Ui.Clear}">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Close}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+            </Button>
+          </TextBox.InnerRightContent>
+        </TextBox>
+
+        <Border Grid.Column="1" Classes="vsep" VerticalAlignment="Center"/>
+
+        <!-- 「添加」不再单列一个展开按钮：输入行常显，提交就在那一行的按钮上（p025）。
+             于是工具栏只剩批量导入与删除两个次级动作。 -->
+        <Button Grid.Column="2" Name="LibImport" Classes="bb btn"
+                AutomationProperties.Name="{x:Static t:Ui.LibraryImport}"
+                Content="{x:Static t:Ui.LibraryImport}"/>
+        <Button Grid.Column="3" Name="LibDelete" Classes="bb btn"
+                AutomationProperties.Name="{x:Static t:Ui.LibraryDelete}"
+                Content="{x:Static t:Ui.LibraryDelete}"/>
+      </Grid>
+
+      <!-- 行内新增行常显（p025 的第二方案：点一下才冒出一行很奇怪）。
+           名字 LibNew 不变：宿主与断言按它找新增输入框。
+           清空按钮走 InnerRightContent：贴在框内右端，与行尾那种大按钮不是一回事。 -->
+      <Grid Grid.Row="2" Name="LibAddRow" Margin="16,8,16,0"
+            ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <TextBox Grid.Column="0" Name="LibNew" Height="{DynamicResource HInput}"
+                 Watermark="{x:Static t:Ui.LibraryNewPlaceholder}">
+          <TextBox.InnerRightContent>
+            <Button Name="LibNewClear" Classes="bb iconbtn" Width="20" Height="20" CornerRadius="10"
+                    Margin="0,0,4,0"
+                    AutomationProperties.Name="{x:Static t:Ui.Clear}"
+                    ToolTip.Tip="{x:Static t:Ui.Clear}">
+              <Path Classes="ic lucide" Data="{x:Static v:Icons.Close}"
+                    Stroke="{Binding $parent[Button].Foreground}"/>
+            </Button>
+          </TextBox.InnerRightContent>
+        </TextBox>
+        <Button Grid.Column="1" Name="LibAddCommit" Classes="bb btn primary"
+                AutomationProperties.Name="{x:Static t:Ui.LibraryAdd}"
+                Content="{x:Static t:Ui.LibraryAdd}"/>
+      </Grid>
+
+      <!-- 软上限提醒：条目多得超过提醒线时才出现，它只提醒、绝不自动删。 -->
+      <Border Grid.Row="3" Name="LibSoftWarn" Classes="reason warn" Margin="16,10,16,0"
+              Padding="10,6" IsVisible="False">
+        <TextBlock Name="LibSoftWarnText" Classes="lvl-warn" TextWrapping="Wrap"/>
+      </Border>
+
+      <!-- 表头与列表共用一个槽位：空状态与列表不互相挤。
+           三列宽度与行模板逐列对齐，否则表头会和内容错开一列。
+           操作列给固定宽度而不是 *：行尾操作出现与消失时列宽不能跟着跳，
+           否则指针每划过一行，密码列都要重排一次。 -->
+      <Grid Grid.Row="4" Margin="16,10,16,0" RowDefinitions="Auto,*">
+        <!-- 表头的左右内边距与列表行取同一个值（行是 PadRow 的 12），
+             否则两边的列边界差几像素，命中次数看着比它的数值偏右。 -->
+        <Border Grid.Row="0" Classes="lhead" Padding="12,6">
+          <Grid ColumnDefinitions="*,72,72">
+            <TextBlock Grid.Column="0" Classes="dim" Text="{x:Static t:Ui.ColumnPassword}"/>
+            <TextBlock Grid.Column="1" Classes="dim" Text="{x:Static t:Ui.LibraryColumnHits}"/>
+            <!-- 操作列不再写「复制」：行尾那两个图标自己说明它们是什么，
+                 表头重复一遍只会让人以为那一列是数据。 -->
+          </Grid>
+        </Border>
+        <!-- 多选是给批量「删除」用的：选中集就是它删的那一份；
+             行尾那两个按钮不看选中集，各管各的那一行。 -->
+        <ListBox Grid.Row="1" Name="LibList" SelectionMode="Multiple" Classes="listbody"
+                 Padding="0" BorderThickness="0">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="v:LibraryRow">
+              <Grid ColumnDefinitions="*,72,72">
+                <TextBlock Grid.Column="0" Classes="dim" Text="{Binding Password}"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Classes="faint" Text="{Binding HitsText}"
+                           VerticalAlignment="Center"/>
+                <!-- 行尾两个图标常驻：压到那一行才出现时，用户看不到入口也就不知道密码本能改。 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Button Classes="bb iconbtn"
+                          AutomationProperties.Name="{x:Static t:Ui.LibraryCopy}"
+                          ToolTip.Tip="{x:Static t:Ui.LibraryCopy}" Click="OnRowCopy">
+                    <Path Classes="ic lucide" Data="{x:Static v:Icons.CopyRow}"
+                          Stroke="{Binding $parent[Button].Foreground}"/>
+                  </Button>
+                  <Button Classes="bb iconbtn"
+                          AutomationProperties.Name="{x:Static t:Ui.LibraryDelete}"
+                          ToolTip.Tip="{x:Static t:Ui.LibraryDelete}" Click="OnRowDelete">
+                    <Path Classes="ic lucide" Data="{x:Static v:Icons.DeleteRow}"
+                          Stroke="{Binding $parent[Button].Foreground}"/>
+                  </Button>
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Grid.Row="1" Name="LibEmpty" Classes="dim" Margin="0,28,0,0"
+                   HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+      </Grid>
+
+      <!-- 底部：磁盘侧的两个入口（交给外部编辑器改、改完按磁盘重读）与条数。
+           页内反馈不走这里：放在没有清除与超时的静态文本上会一直挂着，
+           反馈统一走任务表底部的提示条。 -->
+      <Border Grid.Row="5" Padding="16,10"
+              BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+          <Button Grid.Column="0" Name="LibEdit" Classes="bb tbtn"
+                  AutomationProperties.Name="{x:Static t:Ui.LibraryEditExternal}"
+                  Content="{x:Static t:Ui.LibraryEditExternal}"/>
+          <Button Grid.Column="1" Name="LibReload" Classes="bb tbtn"
+                  AutomationProperties.Name="{x:Static t:Ui.LibraryReload}"
+                  Content="{x:Static t:Ui.LibraryReload}"/>
+          <TextBlock Grid.Column="3" Name="LibCount" Classes="dim"
+                     FontSize="{DynamicResource FsSmall}"
+                     Height="{DynamicResource HBtnSm}" LineHeight="{DynamicResource HBtnSm}"
+                     VerticalAlignment="Center"/>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>

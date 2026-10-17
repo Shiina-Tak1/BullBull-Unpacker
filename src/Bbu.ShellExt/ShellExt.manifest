@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  原生组件的身份清单。这一份是给资源管理器看的：包身份声明必须嵌在 DLL 自己的清单资源里，
+  只有 exe 的 app.manifest 有声明时资源管理器不加载本组件，菜单项也就不会出现。
+  三个属性与 src\Bbu.App\app.manifest 的 msix 元素、包清单逐字段一致。
+
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="Bbu.ShellExt" />
+  <msix xmlns="urn:schemas-microsoft-com:msix.v1"
+        publisher="CN=E4C580E6-1D6E-4B8A-AC24-8EEF39E9F3FE"
+        packageName="Tak1.BullBullUnpacker"
+        applicationId="App" />
+</assembly>

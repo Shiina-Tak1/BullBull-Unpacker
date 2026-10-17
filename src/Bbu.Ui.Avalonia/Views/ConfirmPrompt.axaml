@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="clr-namespace:Bbu.Core.Texts;assembly=Bbu.Core"
+             x:Class="Bbu.Ui.Avalonia.Views.ConfirmPrompt">
+
+  <!-- 窗口内模态：遮罩与卡片两层都由 Layer 开关 open 类，本文件不写显隐逻辑。
+       强调色、默认项与初始焦点按语气分两档（见 AskTone 与 ConfirmPrompt.axaml.cs 的类注释）。 -->
+  <Panel Name="PromptHost" IsVisible="False">
+    <Border Name="PromptScrim" Classes="scrim"/>
+    <Border Name="PromptCard" Classes="modal" Width="440"
+            MaxHeight="{DynamicResource HPopupFixed}"
+            HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,60">
+      <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0" Padding="16,12"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,0,0,1">
+          <TextBlock Name="PromptTitle" FontSize="{DynamicResource FsTitle}" FontWeight="SemiBold"
+                     TextWrapping="Wrap"/>
+        </Border>
+
+        <!-- 正文封在滚动区里：内容一长会把卡片撑出窗口；不套色块，正文取普通的中性档。 -->
+        <ScrollViewer Grid.Row="1" Margin="16,14"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <TextBlock Name="PromptBody" LineHeight="20" TextWrapping="Wrap"
+                     Classes="dim"/>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Padding="16,12"
+                BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0">
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Name="PromptOk" Classes="bb btn"/>
+            <Button Name="PromptCancel" Classes="bb btn" IsCancel="True"
+                    Content="{x:Static t:Ui.Cancel}"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+  </Panel>
+</UserControl>
